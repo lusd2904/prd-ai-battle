@@ -128,11 +128,15 @@ class BattleApp(App[None]):
             f"{self._phase_rail()}    primary [b]{state.primary}[/b]  "
             f"advisors {advisors}  artifact_version [b]{version}[/b]  write_lock {lock}"
         )
-        self.sub_title = f"{state.phase.value} · {version} · write_lock {lock}"
+        gw = self.session.config.gateway_host()
+        self.sub_title = f"{state.phase.value} · {version} · gw {gw} · write_lock {lock}"
 
     def _refresh_state_tab(self) -> None:
         state = self.session.state
         brief = state.brief.summary if state.brief else "—"
+        cfg = self.session.config
+        gw_url = cfg.primary.resolved_base_url(cfg.gateway)
+        key_state = "set" if cfg.primary.resolved_key(cfg.gateway) else "missing"
         md = (
             f"```\n"
             f"phase: {state.phase.value}\n"
@@ -143,9 +147,12 @@ class BattleApp(App[None]):
             f"artifact_version: {state.artifact_version or '(none)'}\n"
             f"write_lock: {state.write_lock}  "
             f"allows_write(primary)={state.allows_write(state.primary)}\n"
+            f"gateway.base_url: {gw_url}\n"
+            f"gateway.api_key: {key_state}\n"
             f"```\n\n"
             "Advisors always receive `tools: []`.\n"
-            "Review input is **brief + matrix + chapter_diff** only."
+            "Review input is **brief + matrix + chapter_diff** only.\n"
+            "Gateway host comes from config/env — never a hardcoded vendor domain."
         )
         self.query_one("#state", Markdown).update(md)
 

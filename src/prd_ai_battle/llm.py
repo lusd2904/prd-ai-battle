@@ -44,9 +44,10 @@ class ChatClient:
 
         Advisors must be called with tools=[] — that empty list is sent on the wire.
         """
-        key = model.api_key()
+        key = model.resolved_key()
         if not key:
-            raise LLMError(f"Missing API key in env {model.api_key_env} for model {model.id}")
+            hint = model.api_key_env or "gateway.api_key / PRD_AI_GATEWAY_KEY"
+            raise LLMError(f"Missing API key for model {model.id} ({hint})")
 
         payload = {
             "model": model.model,
@@ -59,7 +60,7 @@ class ChatClient:
             "Authorization": f"Bearer {key}",
             "Content-Type": "application/json",
         }
-        url = f"{model.base_url}/chat/completions"
+        url = model.chat_completions_url()
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             async with client.stream("POST", url, headers=headers, json=payload) as resp:
                 if resp.status_code >= 400:

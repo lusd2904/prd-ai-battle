@@ -44,6 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("tui", help="Launch the TUI (default).", parents=[common])
     sub.add_parser("demo", help="Run the offline discuss → lock → write → review pipeline.", parents=[common])
     sub.add_parser("init", help="Write config.example.yaml → ./prd-ai-battle.yaml")
+    sub.add_parser("doctor", help="Print resolved gateway base_url (key redacted).", parents=[common])
     shot = sub.add_parser("screenshot", help="Headless TUI snapshot (SVG).", parents=[common])
     shot.add_argument("-o", "--output", type=Path, default=Path("prd-ai-battle.screenshot.svg"))
     return parser
@@ -72,7 +73,7 @@ def cmd_init() -> int:
         print(f"already exists: {dest}", file=sys.stderr)
         return 1
     shutil.copy(src, dest)
-    print(f"wrote {dest}  (set API keys via env vars, or pass --offline)")
+    print(f"wrote {dest}  — set PRD_AI_GATEWAY_URL / PRD_AI_GATEWAY_KEY or pass --offline")
     return 0
 
 
@@ -82,6 +83,14 @@ def cmd_demo(args) -> int:
     workspace = args.workspace or Path(".prd-ai-battle")
     result = asyncio.run(run_offline_pipeline(workspace))
     print(json.dumps(result, indent=2, ensure_ascii=False))
+    return 0
+
+
+def cmd_doctor(args) -> int:
+    from prd_ai_battle.config import doctor_report
+
+    cfg = _config(args)
+    print(json.dumps(doctor_report(cfg), indent=2))
     return 0
 
 
@@ -130,4 +139,6 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(cmd_demo(args))
     if command == "screenshot":
         raise SystemExit(cmd_screenshot(args))
+    if command == "doctor":
+        raise SystemExit(cmd_doctor(args))
     raise SystemExit(cmd_tui(args))

@@ -16,6 +16,7 @@
       "default": false,
       "description": "Use mock streaming models; no network calls."
     },
+    "gateway": { "$ref": "#/$defs/gateway" },
     "primary": { "$ref": "#/$defs/model" },
     "advisors": {
       "type": "array",
@@ -24,10 +25,25 @@
     }
   },
   "$defs": {
+    "gateway": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Shared local multi-key gateway. Models inherit base_url and api_key unless they override.",
+      "properties": {
+        "base_url": {
+          "type": "string",
+          "description": "OpenAI-compatible Chat Completions root. Default is the loopback gateway via PRD_AI_GATEWAY_URL. Do not hardcode vendor or tunnel hosts in the repo."
+        },
+        "api_key": {
+          "type": "string",
+          "description": "Gateway key, usually ${PRD_AI_GATEWAY_KEY:-}. Prefer env interpolation over plaintext."
+        }
+      }
+    },
     "model": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "base_url", "model"],
+      "required": ["id", "model"],
       "properties": {
         "id": {
           "type": "string",
@@ -35,16 +51,19 @@
         },
         "base_url": {
           "type": "string",
-          "description": "OpenAI-compatible Chat Completions root, e.g. https://api.openai.com/v1"
+          "description": "Optional per-model override of gateway.base_url. Resolved from config + env. Empty means inherit the gateway."
+        },
+        "api_key": {
+          "type": "string",
+          "description": "Optional per-model key or ${ENV} interpolation. Empty means inherit gateway.api_key."
         },
         "api_key_env": {
           "type": "string",
-          "default": "OPENAI_API_KEY",
-          "description": "Environment variable that holds the API key."
+          "description": "Optional environment variable name to read the key from (alternative to api_key)."
         },
         "model": {
           "type": "string",
-          "description": "Vendor model id sent in the Chat Completions body."
+          "description": "Model id sent in the Chat Completions body (whatever the gateway expects)."
         },
         "temperature": {
           "type": "number",

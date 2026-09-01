@@ -67,9 +67,9 @@ def test_expand_env(monkeypatch):
 
 
 def test_load_example_config(tmp_path: Path, monkeypatch):
-    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    monkeypatch.delenv("PRD_AI_GATEWAY_URL", raising=False)
     src = Path("config.example.yaml")
     cfg = load_config(src, offline=True)
     assert cfg.primary.id == "primary"
     assert cfg.advisors
-    assert cfg.primary.base_url.endswith("/v1")
+    assert cfg.primary.resolved_base_url(cfg.gateway) == "http://127.0.0.1:4000/v1"

@@ -73,17 +73,31 @@ Tests:
 pytest
 ```
 
-## Live models (OpenAI-compatible)
+## Live models (local multi-key gateway)
+
+No vendor or tunnel hostname is hardcoded. `base_url` and `api_key` come from the config file and environment variables. The default is **your local multi-key gateway** on loopback:
 
 ```bash
 prd-ai-battle init
-# edit prd-ai-battle.yaml, then:
-export OPENAI_API_KEY=...
-export DEEPSEEK_API_KEY=...
+export PRD_AI_GATEWAY_URL=http://127.0.0.1:4000/v1   # optional; this is already the default
+export PRD_AI_GATEWAY_KEY=...                        # key your local gateway expects
 prd-ai-battle --config prd-ai-battle.yaml
+prd-ai-battle doctor --config prd-ai-battle.yaml     # prints resolved URLs; key redacted
 ```
 
-Every model is a Chat Completions endpoint (`base_url` + `api_key` via env var + `model` id). Discussion opens **one SSE stream per model**. Advisor requests always send `"tools": []`.
+```yaml
+gateway:
+  base_url: ${PRD_AI_GATEWAY_URL:-http://127.0.0.1:4000/v1}
+  api_key: ${PRD_AI_GATEWAY_KEY:-}
+
+primary:
+  id: primary
+  model: gpt-4o          # whatever id the gateway routes
+```
+
+Per-model `base_url` / `api_key` / `api_key_env` override the shared gateway. An optional external tunnel is configured the same way — only in **your** yaml or env, never in this repository.
+
+Discussion opens **one SSE stream per model**. Advisor requests always send `"tools": []`.
 
 Zero-config (`prd-ai-battle` with no file) boots **offline mocks**.
 
@@ -109,6 +123,7 @@ prd-ai-battle --offline       # force mocks
 prd-ai-battle --requirement samples/tender.md
 prd-ai-battle demo --workspace .prd-ai-battle
 prd-ai-battle init            # copy example YAML to ./prd-ai-battle.yaml
+prd-ai-battle doctor          # resolved gateway base_url (key redacted)
 prd-ai-battle screenshot -o tui.svg
 ```
 

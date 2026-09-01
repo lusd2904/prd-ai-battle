@@ -1,24 +1,31 @@
-# Copy to prd-ai-battle.yaml (or pass --config) and fill in env vars.
-# Keys are never stored here — only env var names.
+# Local multi-key gateway (OpenAI-compatible Chat Completions).
+# Copy to prd-ai-battle.yaml (or pass --config).
+#
+# base_url and api_key come from this file and/or env vars.
+# The checked-in default is the loopback gateway — never a vendor host.
+# An optional external tunnel belongs only in YOUR yaml/env, not in this repo.
 
 workspace: .prd-ai-battle
-offline: false   # true = mock models, no network (good first run)
+offline: false   # true = mock models, no network
+
+gateway:
+  base_url: ${PRD_AI_GATEWAY_URL:-http://127.0.0.1:4000/v1}
+  api_key: ${PRD_AI_GATEWAY_KEY:-}
 
 primary:
   id: primary
-  base_url: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
-  api_key_env: OPENAI_API_KEY
-  model: gpt-4o
+  model: gpt-4o          # id your local gateway understands
   temperature: 0.3
+  # inherit gateway.base_url + gateway.api_key
+  # override per model if needed:
+  # base_url: ${PRD_AI_GATEWAY_URL:-http://127.0.0.1:4000/v1}
+  # api_key: ${PRD_AI_GATEWAY_KEY:-}
+  # api_key_env: MY_OTHER_KEY
 
 advisors:
   - id: advisor-a
-    base_url: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
-    api_key_env: OPENAI_API_KEY
     model: gpt-4o-mini
     temperature: 0.5
   - id: advisor-b
-    base_url: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
-    api_key_env: DEEPSEEK_API_KEY
     model: deepseek-chat
     temperature: 0.5
