@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://prd-ai-battle.local/schemas/session.schema.json",
+  "title": "prd-ai-battle session contract",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "phase",
+    "primary",
+    "advisors",
+    "brief",
+    "matrix",
+    "artifact_version",
+    "write_lock"
+  ],
+  "properties": {
+    "phase": {
+      "type": "string",
+      "enum": ["discuss", "locked", "execute", "review", "revise"]
+    },
+    "primary": { "type": "string" },
+    "advisors": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "brief": { "description": "Tender/requirement summary extract. Not the raw file." },
+    "matrix": {
+      "type": "object",
+      "description": "响应对照表",
+      "properties": {
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["clause", "responded", "evidence_page", "opinion", "status"],
+            "properties": {
+              "clause": { "type": "string", "description": "条款" },
+              "responded": { "type": "string", "description": "是否响应" },
+              "evidence_page": { "type": "string", "description": "证据页码" },
+              "opinion": { "type": "string", "description": "意见" },
+              "status": { "type": "string", "description": "状态" }
+            }
+          }
+        }
+      }
+    },
+    "artifact_version": {
+      "type": "string",
+      "description": "v1 / v2 / … empty before the first primary write"
+    },
+    "write_lock": {
+      "type": "boolean",
+      "description": "When true, filesystem artifact writes only if phase is execute|revise AND actor is primary"
+    }
+  }
+}
