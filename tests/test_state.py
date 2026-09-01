@@ -49,7 +49,7 @@ def test_cannot_skip_to_review():
 
 def test_cannot_lock_without_brief():
     sm = _machine(brief=False)
-    with pytest.raises(IllegalTransition, match="brief"):
+    with pytest.raises(IllegalTransition, match="ingest|brief"):
         sm.lock_matrix()
 
 

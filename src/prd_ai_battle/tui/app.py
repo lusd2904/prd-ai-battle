@@ -77,7 +77,6 @@ class BattleApp(App[None]):
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
-        yield Static(id="phases")
         yield Static(id="status")
         with Horizontal(id="body"):
             with Vertical(id="left"):
@@ -125,11 +124,9 @@ class BattleApp(App[None]):
         lock = "OPEN" if writable else "ON"
         version = state.artifact_version or "—"
         advisors = ", ".join(state.advisors) or "—"
-        self.query_one("#phases", Static).update(self._phase_rail())
         self.query_one("#status", Static).update(
-            f" primary [b]{state.primary}[/b]   advisors {advisors}   "
-            f"artifact_version [b]{version}[/b]   write_lock {lock} "
-            f"(writes only in execute/revise by primary)"
+            f"{self._phase_rail()}    primary [b]{state.primary}[/b]  "
+            f"advisors {advisors}  artifact_version [b]{version}[/b]  write_lock {lock}"
         )
         self.sub_title = f"{state.phase.value} · {version} · write_lock {lock}"
 
