@@ -54,6 +54,8 @@ class BattleApp(App[None]):
         Binding("e", "execute", "Primary write", show=True),
         Binding("r", "review", "Review", show=True),
         Binding("v", "revise", "Revise", show=True),
+        Binding("slash", "focus_composer", "Prompt", show=True),
+        Binding("escape", "blur_composer", "Blur", show=False),
         Binding("q", "quit", "Quit", show=True),
     ]
 
@@ -99,6 +101,9 @@ class BattleApp(App[None]):
             self.query_one("#requirement", Markdown).update(
                 "Press **L** to load the bundled 招标文件 sample, or pass `--requirement PATH`."
             )
+        # Keep bindings (L/D/C/E/R/V) out of the composer until the user hits /
+        self.query_one("#composer", Input).can_focus = True
+        self.set_focus(table)
 
     def _refresh_status(self) -> None:
         m = self.session.machine
@@ -169,6 +174,12 @@ class BattleApp(App[None]):
         prompt = event.value.strip()
         event.input.value = ""
         self.action_discuss(prompt or None)
+
+    def action_focus_composer(self) -> None:
+        self.query_one("#composer", Input).focus()
+
+    def action_blur_composer(self) -> None:
+        self.query_one("#matrix", DataTable).focus()
 
     def action_load_sample(self) -> None:
         from prd_ai_battle.ingest import bundled_sample_path

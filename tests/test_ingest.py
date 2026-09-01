@@ -10,6 +10,8 @@ def test_extracts_toc_scores_and_disqualifiers():
     assert brief.disqualifiers
     assert any("860" in d or "预算" in d for d in brief.disqualifiers)
     assert brief.starred_requirements
+    assert all(s.startswith("5.") for s in brief.starred_requirements)
+    assert not any("条款作出响应" in s for s in brief.starred_requirements)
     prompt = brief.as_prompt_block()
     assert "评分点" in prompt
     assert "废标项" in prompt

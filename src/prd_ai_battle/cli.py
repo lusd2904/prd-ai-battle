@@ -11,38 +11,40 @@ from pathlib import Path
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="prd-ai-battle",
-        description="Local TUI for multi-model PRD / bid collaborative drafting.",
-    )
-    parser.add_argument(
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument(
         "--config",
         type=Path,
         default=None,
         help="YAML config (default: ./prd-ai-battle.yaml, else offline mocks).",
     )
-    parser.add_argument(
+    common.add_argument(
         "--workspace",
         type=Path,
         default=None,
         help="Override workspace directory.",
     )
-    parser.add_argument(
+    common.add_argument(
         "--offline",
         action="store_true",
         help="Force mock models (no network).",
     )
-    parser.add_argument(
+    common.add_argument(
         "--requirement",
         type=Path,
         default=None,
         help="Requirement / 招标文件 to load on start.",
     )
+    parser = argparse.ArgumentParser(
+        prog="prd-ai-battle",
+        description="Local TUI for multi-model PRD / bid collaborative drafting.",
+        parents=[common],
+    )
     sub = parser.add_subparsers(dest="command")
-    sub.add_parser("tui", help="Launch the TUI (default).")
-    sub.add_parser("demo", help="Run the offline discuss → lock → write → review pipeline.")
+    sub.add_parser("tui", help="Launch the TUI (default).", parents=[common])
+    sub.add_parser("demo", help="Run the offline discuss → lock → write → review pipeline.", parents=[common])
     sub.add_parser("init", help="Write config.example.yaml → ./prd-ai-battle.yaml")
-    shot = sub.add_parser("screenshot", help="Headless TUI snapshot (SVG).")
+    shot = sub.add_parser("screenshot", help="Headless TUI snapshot (SVG).", parents=[common])
     shot.add_argument("-o", "--output", type=Path, default=Path("prd-ai-battle.screenshot.svg"))
     return parser
 
@@ -102,9 +104,16 @@ def cmd_screenshot(args) -> int:
             cfg.workspace = str(args.workspace)
         app = BattleApp(cfg, requirement=None, screenshot_ready=True)
         async with app.run_test(size=(140, 42)) as pilot:
-            await app.action_load_sample()
+            app.action_load_sample()
             await pilot.pause(0.05)
-            app.save_screenshot(path=str(args.output))
+            app.action_discuss()
+            for _ in range(40):
+                await pilot.pause(0.05)
+                if not app._busy:
+                    break
+            out = Path(args.output)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            app.save_screenshot(filename=out.name, path=str(out.parent.resolve()))
 
     asyncio.run(_run())
     print(f"wrote {args.output}")

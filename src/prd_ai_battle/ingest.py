@@ -13,7 +13,7 @@ from prd_ai_battle.models import Brief, ScoringPoint
 HEADING_RE = re.compile(r"^(#{1,3})\s+(.+)$")
 SCORE_LINE_RE = re.compile(r"^\|\s*(.+?)\s*\|\s*(\d+(?:\.\d+)?)\s*\|")
 DISQUALIFIER_HINTS = ("废标", "否决", "投标无效", "无效投标")
-STAR_RE = re.compile(r"★\s*(.+)")
+STAR_RE = re.compile(r"^★\s*(.+)")
 
 
 def extract_brief(text: str, *, source_path: str = "") -> Brief:

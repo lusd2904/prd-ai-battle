@@ -33,9 +33,10 @@ In the TUI:
 | `E` | Primary execute — writes `drafts/v1/response.md` |
 | `R` | Advisor review stub (brief + matrix + section diffs only) |
 | `V` | Primary revise → `drafts/v2/response.md` |
+| `/` | Focus the discuss prompt (Escape returns to the matrix) |
 | `Q` | Quit |
 
-The bottom input line also starts a discuss round with an optional prompt.
+The bottom input line starts a discuss round with an optional prompt. Keybindings stay available until you press `/`.
 
 Headless offline pipeline (same success path, no TUI):
 
@@ -124,7 +125,7 @@ Long documents are **ingested** into a shared brief (目录 / 评分点 / 废标
 prd-ai-battle                 # TUI (offline mocks if no config)
 prd-ai-battle --offline       # force mocks
 prd-ai-battle --requirement samples/tender.md
-prd-ai-battle demo            # full offline pipeline → JSON summary
+prd-ai-battle demo --workspace .prd-ai-battle   # full offline pipeline → JSON summary
 prd-ai-battle init            # copy example YAML to ./prd-ai-battle.yaml
 prd-ai-battle screenshot -o tui.svg
 ```
