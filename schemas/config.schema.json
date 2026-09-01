@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://prd-ai-battle.local/schemas/config.schema.json",
+  "title": "prd-ai-battle config",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["primary", "advisors"],
+  "properties": {
+    "workspace": {
+      "type": "string",
+      "default": ".prd-ai-battle",
+      "description": "Local directory for transcript, brief, matrix, and draft versions."
+    },
+    "offline": {
+      "type": "boolean",
+      "default": false,
+      "description": "Use mock streaming models; no network calls."
+    },
+    "primary": { "$ref": "#/$defs/model" },
+    "advisors": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/model" }
+    }
+  },
+  "$defs": {
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "base_url", "model"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable label shown on chat bubbles (not necessarily the vendor model id)."
+        },
+        "base_url": {
+          "type": "string",
+          "description": "OpenAI-compatible Chat Completions root, e.g. https://api.openai.com/v1"
+        },
+        "api_key_env": {
+          "type": "string",
+          "default": "OPENAI_API_KEY",
+          "description": "Environment variable that holds the API key."
+        },
+        "model": {
+          "type": "string",
+          "description": "Vendor model id sent in the Chat Completions body."
+        },
+        "temperature": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2,
+          "default": 0.4
+        }
+      }
+    }
+  }
+}

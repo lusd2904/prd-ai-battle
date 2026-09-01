@@ -1,0 +1,105 @@
+Screen {
+    background: #0e1116;
+    color: #e6edf3;
+}
+
+Header {
+    background: #161b22;
+    color: #79c0ff;
+    text-style: bold;
+}
+
+Footer {
+    background: #161b22;
+}
+
+#body {
+    height: 1fr;
+}
+
+#left {
+    width: 42%;
+    min-width: 36;
+    border: tall #30363d;
+    margin: 0 0 0 1;
+}
+
+#right {
+    width: 58%;
+    border: tall #30363d;
+    margin: 0 1 0 0;
+}
+
+#status {
+    dock: top;
+    height: 1;
+    background: #21262d;
+    color: #d2a8ff;
+    padding: 0 1;
+}
+
+TabbedContent {
+    height: 1fr;
+}
+
+#requirement, #brief {
+    padding: 1;
+}
+
+#chat {
+    height: 1fr;
+    padding: 0 1;
+}
+
+.bubble {
+    margin: 1 0 0 0;
+    padding: 0 1 1 1;
+    border: solid #30363d;
+}
+
+.bubble-header {
+    text-style: bold;
+    color: #8b949e;
+}
+
+.model-primary {
+    border: solid #58a6ff;
+}
+
+.model-primary .bubble-header {
+    color: #58a6ff;
+}
+
+.model-advisor-a {
+    border: solid #d2a8ff;
+}
+
+.model-advisor-a .bubble-header {
+    color: #d2a8ff;
+}
+
+.model-advisor-b {
+    border: solid #f2cc60;
+}
+
+.model-advisor-b .bubble-header {
+    color: #f2cc60;
+}
+
+.model-user {
+    border: solid #3fb950;
+}
+
+.model-user .bubble-header {
+    color: #3fb950;
+}
+
+#composer {
+    dock: bottom;
+    height: 3;
+    margin: 0 1 0 1;
+}
+
+DataTable {
+    height: 1fr;
+}
