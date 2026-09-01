@@ -17,6 +17,8 @@ def test_matrix_rows_cover_star_score_and_disqualify():
     table = matrix.as_prompt_table()
     assert "是否响应" in table
     assert "证据页码" in table
+    assert "意见" in table
+    assert "状态" in table
 
 
 def test_cycle_and_lock():

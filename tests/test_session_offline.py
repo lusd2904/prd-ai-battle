@@ -11,7 +11,11 @@ from prd_ai_battle.write_lock import WriteDenied
 @pytest.mark.asyncio
 async def test_offline_pipeline(tmp_path: Path):
     result = await run_offline_pipeline(tmp_path / "ws")
-    assert result["phase"] == Phase.REVIEW.value
+    assert result["phase"] == Phase.REVISE.value
+    assert result["artifact_version"] == "v2"
+    assert result["write_lock"] is True
+    assert result["primary"] == "primary"
+    assert "advisor-a" in result["advisors"]
     assert result["matrix_locked"] is True
     assert "primary" in result["discuss_models"]
     assert "advisor-a" in result["discuss_models"]
@@ -36,8 +40,10 @@ async def test_review_packet_has_no_repo_dump(tmp_path: Path):
     await session.execute_primary()
     packet = session.build_review_packet()
     prompt = packet.as_prompt()
+    assert packet.allowed_keys() == ("brief", "matrix", "chapter_diff")
+    assert set(packet.model_dump()) == {"brief", "matrix", "chapter_diff"}
     assert "You do not have repository access" in prompt
-    assert "Chapter diffs" in prompt
+    assert "chapter_diff" in prompt
     assert "drafts/" not in prompt
     assert "__pycache__" not in prompt
     assert "投标截止时间" not in prompt  # raw tender body stays out; only the brief is shared

@@ -1,38 +1,40 @@
-"""Write-lock: only the primary may touch the filesystem, and only after lock."""
+"""Write-lock: filesystem artifact writes only in execute|revise by primary."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from prd_ai_battle.models import Phase
+from prd_ai_battle.models import WRITE_PHASES, SessionState, next_artifact_version
 from prd_ai_battle.state import StateMachine
 
 
 class WriteDenied(PermissionError):
-    """Raised when an advisor — or an unlocked session — tries to write."""
+    """Raised when an advisor — or a non-write phase — tries to write artifacts."""
 
 
 class WriteLock:
-    def __init__(self, primary_id: str) -> None:
-        self.primary_id = primary_id
+    def __init__(self, state: SessionState) -> None:
+        self.state = state
 
-    def assert_can_write(self, actor_id: str, machine: StateMachine) -> None:
-        if actor_id != self.primary_id:
-            raise WriteDenied(f"{actor_id!r} is not the primary ({self.primary_id!r}); advisors have no write tools")
-        if not machine.matrix_locked:
-            raise WriteDenied("Compliance matrix is not locked; filesystem writes are forbidden")
-        if machine.phase is Phase.DISCUSS or machine.phase is Phase.IDLE:
-            raise WriteDenied(f"Filesystem writes are forbidden in phase {machine.phase.value}")
-        if machine.phase not in {Phase.CONFIRM, Phase.REVIEW}:
-            raise WriteDenied(f"Filesystem writes are forbidden in phase {machine.phase.value}")
+    def assert_can_write(self, actor_id: str, machine: StateMachine | None = None) -> None:
+        state = machine.state if machine is not None else self.state
+        if actor_id != state.primary:
+            raise WriteDenied(
+                f"{actor_id!r} is not the primary ({state.primary!r}); advisors always get tools: []"
+            )
+        if not state.write_lock:
+            raise WriteDenied("write_lock is disabled in an unexpected way")
+        if state.phase not in WRITE_PHASES:
+            raise WriteDenied(
+                f"Filesystem writes are forbidden in phase {state.phase.value} "
+                f"(only {'/'.join(p.value for p in WRITE_PHASES)} + primary)"
+            )
+        if not state.allows_write(actor_id):
+            raise WriteDenied(f"write_lock denied for {actor_id!r} in {state.phase.value}")
 
-    def tools_for(self, actor_id: str, machine: StateMachine) -> list[str]:
-        """Advisors never see write tools, even after the matrix is locked."""
-        if actor_id != self.primary_id:
-            return []
-        if machine.writes_allowed():
-            return ["write_file"]
-        return []
+    def tools_for(self, actor_id: str, machine: StateMachine | None = None) -> list[str]:
+        state = machine.state if machine is not None else self.state
+        return state.tools_for(actor_id)
 
 
 class ArtifactWriter:
@@ -43,12 +45,17 @@ class ArtifactWriter:
         self.lock = lock
         self.machine = machine
 
-    def write(self, actor_id: str, relative_path: str, content: str, *, version: int) -> Path:
+    def write(self, actor_id: str, relative_path: str, content: str, *, version: int | None = None) -> Path:
         self.lock.assert_can_write(actor_id, self.machine)
         if Path(relative_path).is_absolute() or ".." in Path(relative_path).parts:
             raise WriteDenied("Draft path must be a relative file inside the version directory")
-        dest = self.drafts_root / f"v{version}" / relative_path
+        if version is None:
+            label = next_artifact_version(self.machine.state.artifact_version)
+            version = int(label.lstrip("v"))
+        else:
+            label = f"v{version}"
+        dest = self.drafts_root / label / relative_path
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(content, encoding="utf-8")
-        self.machine.record_draft()
+        self.machine.record_draft(label)
         return dest

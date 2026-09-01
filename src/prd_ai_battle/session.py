@@ -1,4 +1,4 @@
-"""Orchestrates ingest → discuss → lock → primary write → advisor review."""
+"""Orchestrates discuss → locked → execute → review → revise."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from prd_ai_battle.models import (
     DraftVersion,
     Phase,
     ReviewPacket,
-    SessionMeta,
+    SessionState,
     iso_now,
 )
 from prd_ai_battle.state import IllegalTransition, StateMachine
@@ -28,18 +28,35 @@ from prd_ai_battle.write_lock import ArtifactWriter, WriteDenied, WriteLock
 class Session:
     def __init__(self, config: AppConfig, root: Path | None = None) -> None:
         self.config = config
+        self.state = SessionState(
+            primary=config.primary.id,
+            advisors=[a.id for a in config.advisors],
+            phase=Phase.DISCUSS,
+            write_lock=True,
+        )
         self.store = WorkspaceStore(Path(root) if root is not None else Path(config.workspace))
-        self.store.init()
-        self.machine = StateMachine()
-        self.lock = WriteLock(config.primary.id)
+        self.store.init(self.state)
+        self.machine = StateMachine(self.state)
+        self.lock = WriteLock(self.state)
         self.writer = ArtifactWriter(self.store.drafts_dir, self.lock, self.machine)
         self.client: ChatClient = MockChatClient() if config.offline else ChatClient()
         self.requirement: str = ""
-        self.brief: Brief | None = None
-        self.matrix = ComplianceMatrix()
-        self.meta = SessionMeta()
         self._buffers: dict[str, str] = {}
         self.last_write_path: Path | None = None
+
+    @property
+    def brief(self) -> Brief | None:
+        return self.state.brief
+
+    @property
+    def matrix(self) -> ComplianceMatrix:
+        return self.state.matrix
+
+    def persist(self) -> None:
+        self.store.save_state(self.state)
+        if self.state.brief is not None:
+            self.store.save_brief(self.state.brief)
+        self.store.save_matrix(self.state.matrix)
 
     def load_requirement(self, path: Path) -> Brief:
         text = path.read_text(encoding="utf-8")
@@ -48,56 +65,45 @@ class Session:
     def load_requirement_text(self, text: str, *, source: str = "") -> Brief:
         self.requirement = text
         self.store.save_requirement(text, source)
-        self.brief = extract_brief(text, source_path=source)
-        self.store.save_brief(self.brief)
-        self.matrix = matrix_from_brief(self.brief)
-        self.store.save_matrix(self.matrix)
-        self.machine.has_brief = True
-        self.meta.requirement_path = source
-        self.meta.phase = Phase.IDLE
-        self.store.save_meta(self.meta)
-        return self.brief
+        self.state.brief = extract_brief(text, source_path=source)
+        self.state.matrix = matrix_from_brief(self.state.brief)
+        self.state.phase = Phase.DISCUSS
+        self.state.requirement_path = source
+        self.state.artifact_version = ""
+        self.persist()
+        return self.state.brief
 
     def load_sample(self) -> Brief:
         return self.load_requirement(bundled_sample_path())
 
     def seed_matrix_offline(self) -> None:
-        apply_offline_seed(self.matrix)
-        self.store.save_matrix(self.matrix)
+        apply_offline_seed(self.state.matrix)
+        self.persist()
 
     def enter_discuss(self) -> None:
-        if self.machine.phase is Phase.IDLE:
-            self.machine.advance(Phase.DISCUSS)
-            self.meta.phase = Phase.DISCUSS
-            self.store.save_meta(self.meta)
+        self.machine.enter_discuss()
+        self.persist()
 
     def lock_matrix(self) -> ComplianceMatrix:
-        if not self.matrix.rows:
-            raise IllegalTransition("Matrix is empty — ingest a requirement first")
-        if self.machine.phase is Phase.IDLE and self.machine.has_brief:
-            self.enter_discuss()
-        self.matrix.lock()
-        self.store.save_matrix(self.matrix)
         self.machine.lock_matrix()
-        self.meta.phase = Phase.CONFIRM
-        self.store.save_meta(self.meta)
-        return self.matrix
+        self.persist()
+        return self.state.matrix
 
     def cycle_row(self, clause_id: str) -> None:
-        self.matrix.cycle_status(clause_id)
-        self.store.save_matrix(self.matrix)
+        self.state.matrix.cycle_status(clause_id)
+        self.persist()
 
     def _client_messages(self, extra_user: str) -> list[dict[str, str]]:
-        if self.brief is None:
+        if self.state.brief is None:
             raise IllegalTransition("No brief loaded")
         system = (
             "You are one advisor in a shared multi-model discussion. "
             "You receive the extracted brief only — never a full repository dump. "
-            f"Your id is shown to the user. Phase={self.machine.phase.value}."
+            f"Your id is shown to the user. Phase={self.state.phase.value}."
         )
         return [
             {"role": "system", "content": system},
-            {"role": "user", "content": self.brief.as_prompt_block()},
+            {"role": "user", "content": self.state.brief.as_prompt_block()},
             {"role": "user", "content": extra_user},
         ]
 
@@ -106,13 +112,12 @@ class Session:
             {"role": "system", "content": packet.as_prompt()},
             {
                 "role": "user",
-                "content": "Review the chapter diffs against the brief and locked matrix. "
-                "List gaps only. Do not request the rest of the repo.",
+                "content": "Review brief + matrix + chapter_diff only. List gaps. Do not request the repo.",
             },
         ]
 
     def build_review_packet(self) -> ReviewPacket:
-        if self.brief is None:
+        if self.state.brief is None:
             raise IllegalTransition("No brief")
         version = self.store.latest_version()
         if version < 1:
@@ -120,16 +125,22 @@ class Session:
         current = self.store.read_draft(version)
         previous = self.store.read_draft(version - 1) if version > 1 else ""
         return ReviewPacket(
-            brief=self.brief,
-            matrix=self.matrix,
-            diffs=chapter_diffs(previous, current),
-            version=version,
+            brief=self.state.brief,
+            matrix=self.state.matrix,
+            chapter_diff=chapter_diffs(previous, current),
         )
+
+    def _tools_map(self, model_ids: list[str]) -> dict[str, list[str]]:
+        out: dict[str, list[str]] = {}
+        for model_id in model_ids:
+            # Hard rule: advisors always get tools: []
+            out[model_id] = [] if model_id != self.state.primary else self.state.tools_for(model_id)
+        return out
 
     async def discuss(self, user_prompt: str | None = None) -> AsyncIterator[StreamDelta]:
         self.enter_discuss()
-        if self.machine.phase is not Phase.DISCUSS:
-            raise IllegalTransition(f"Discuss is only valid in discuss (in {self.machine.phase.value})")
+        if self.state.phase is not Phase.DISCUSS:
+            raise IllegalTransition(f"Discuss is only valid in discuss (in {self.state.phase.value})")
         prompt = user_prompt or (
             "Discuss the brief in one shared thread. Identify must-win scoring points, "
             "废标风险, and what should go into the 响应对照表. Do not write files."
@@ -138,10 +149,26 @@ class Session:
         async for event in self._fanout(self._client_messages(prompt), Phase.DISCUSS):
             yield event
 
-    async def execute_primary_stream(self, *, note: str = "v1 draft") -> AsyncIterator[StreamDelta]:
-        """Primary writes a draft (streamed). Advisors never get this tool."""
-        if not self.machine.writes_allowed():
-            self.lock.assert_can_write(self.config.primary.id, self.machine)
+    def begin_execute(self) -> None:
+        self.machine.enter_execute()
+        self.persist()
+
+    def begin_review(self) -> None:
+        self.machine.enter_review()
+        self.persist()
+
+    def begin_revise(self) -> None:
+        self.machine.enter_revise()
+        self.persist()
+
+    async def execute_primary_stream(self, *, note: str = "draft") -> AsyncIterator[StreamDelta]:
+        """Primary writes a draft (streamed). Only valid in execute (or after begin_execute)."""
+        if self.state.phase is Phase.LOCKED:
+            self.begin_execute()
+        elif self.state.phase is Phase.REVIEW:
+            self.begin_revise()
+        if not self.state.allows_write(self.state.primary):
+            self.lock.assert_can_write(self.state.primary, self.machine)
         version = self.store.latest_version() + 1
         prompt = (
             "Write the first draft of the bid response as Markdown. "
@@ -149,12 +176,12 @@ class Session:
             if version == 1
             else "Revise the draft using the latest review comments."
         )
-        phase = self.machine.phase
+        phase = self.state.phase
         chunks: list[str] = []
         async for token in self.client.stream_chat(
             self.config.primary,
             self._client_messages(prompt),
-            tools=self.lock.tools_for(self.config.primary.id, self.machine),
+            tools=self.state.tools_for(self.state.primary),
         ):
             chunks.append(token)
             yield StreamDelta(self.config.primary.id, token, False)
@@ -162,7 +189,7 @@ class Session:
         path = self.writer.write(self.config.primary.id, "response.md", content, version=version)
         self.last_write_path = path
         self.store.register_draft(
-            self.meta,
+            self.state,
             DraftVersion(version=version, path=str(path), written_by=self.config.primary.id, note=note),
         )
         notice = f"\n\n[wrote {path}]"
@@ -177,34 +204,34 @@ class Session:
         return self.last_write_path
 
     async def review(self) -> AsyncIterator[StreamDelta]:
-        if self.machine.phase is Phase.CONFIRM:
-            self.machine.start_review()
-        elif self.machine.phase is not Phase.REVIEW:
-            raise IllegalTransition(f"Review is only valid after confirm (in {self.machine.phase.value})")
-        self.meta.phase = Phase.REVIEW
-        self.store.save_meta(self.meta)
+        if self.state.phase in {Phase.EXECUTE, Phase.REVISE}:
+            self.begin_review()
+        elif self.state.phase is not Phase.REVIEW:
+            raise IllegalTransition(f"Review is only valid after execute (in {self.state.phase.value})")
         packet = self.build_review_packet()
-        # Advisors only — and they get the packet, never the workspace tree.
         advisors = list(self.config.advisors)
         messages_for = {m.id: self._review_messages(packet) for m in advisors}
-        tools_for = {m.id: self.lock.tools_for(m.id, self.machine) for m in advisors}
-        assert all(tools_for[m.id] == [] for m in advisors)
+        tools_for = self._tools_map([m.id for m in advisors])
+        if any(tools_for[m.id] for m in advisors):
+            raise WriteDenied("Advisors must always receive tools: []")
         self._persist_user(
-            f"Review v{packet.version} using brief + matrix + section diffs only.",
+            f"Review {self.state.artifact_version} using brief + matrix + chapter_diff only.",
             Phase.REVIEW,
         )
         async for event in self._run_models(advisors, messages_for, tools_for, Phase.REVIEW):
             yield event
 
     async def revise(self) -> Path:
-        if self.machine.phase is not Phase.REVIEW:
-            raise IllegalTransition("Revise is only valid in review")
+        if self.state.phase is Phase.REVIEW:
+            self.begin_revise()
+        if self.state.phase is not Phase.REVISE:
+            raise IllegalTransition("Revise is only valid after review")
         return await self.execute_primary(note="revised after review")
 
     async def _fanout(self, messages: list[dict[str, str]], phase: Phase) -> AsyncIterator[StreamDelta]:
         models = self.config.all_models()
         messages_for = {m.id: messages for m in models}
-        tools_for = {m.id: self.lock.tools_for(m.id, self.machine) for m in models}
+        tools_for = self._tools_map([m.id for m in models])
         async for event in self._run_models(models, messages_for, tools_for, phase):
             yield event
 
@@ -215,6 +242,9 @@ class Session:
         tools_for: dict[str, list[str]],
         phase: Phase,
     ) -> AsyncIterator[StreamDelta]:
+        for mid, tools in list(tools_for.items()):
+            if mid != self.state.primary and tools:
+                raise WriteDenied(f"Advisor {mid} must receive tools: []")
         self._buffers = {m.id: "" for m in models}
         async for event in stream_parallel(self.client, models, messages_for, tools_for):
             if event.text:
@@ -236,12 +266,11 @@ class Session:
 
     def advisor_try_write(self, advisor_id: str, content: str) -> None:
         """Used by tests to prove advisors cannot write."""
-        version = max(self.store.latest_version(), 0) + 1
-        self.writer.write(advisor_id, "sneaky.md", content, version=version)
+        self.writer.write(advisor_id, "sneaky.md", content)
 
 
 async def run_offline_pipeline(workspace: Path, *, seed_matrix: bool = True) -> dict:
-    """Headless success path: sample → discuss → lock → write → review → revise."""
+    """Headless success path: sample → discuss → lock → execute → review → revise."""
     from prd_ai_battle.config import default_offline_config
 
     session = Session(default_offline_config(str(workspace)), root=workspace)
@@ -261,7 +290,11 @@ async def run_offline_pipeline(workspace: Path, *, seed_matrix: bool = True) -> 
             review_ids.add(event.model_id)
     v2 = await session.revise()
     return {
-        "phase": session.machine.phase.value,
+        "phase": session.state.phase.value,
+        "primary": session.state.primary,
+        "advisors": session.state.advisors,
+        "artifact_version": session.state.artifact_version,
+        "write_lock": session.state.write_lock,
         "matrix_locked": session.matrix.locked,
         "discuss_models": sorted(discuss_ids),
         "review_models": sorted(review_ids),
@@ -269,6 +302,7 @@ async def run_offline_pipeline(workspace: Path, *, seed_matrix: bool = True) -> 
         "v2": str(v2),
         "workspace": str(workspace),
         "transcript": str(session.store.transcript_path),
+        "contract": session.state.contract_view(),
     }
 
 

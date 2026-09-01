@@ -1,4 +1,4 @@
-"""Shared domain types: phases, brief, matrix, transcript, drafts."""
+"""Product-team session contract: phases, brief, matrix, review packet."""
 
 from __future__ import annotations
 
@@ -18,21 +18,33 @@ def iso_now() -> str:
 
 
 class Phase(str, Enum):
-    """Official three-phase machine plus a pre-discuss idle state."""
+    """Required product phases — no idle/confirm aliases."""
 
-    IDLE = "idle"
     DISCUSS = "discuss"
-    CONFIRM = "confirm"
+    LOCKED = "locked"
+    EXECUTE = "execute"
     REVIEW = "review"
+    REVISE = "revise"
+
+
+WRITE_PHASES: frozenset[Phase] = frozenset({Phase.EXECUTE, Phase.REVISE})
 
 
 class ResponseStatus(str, Enum):
-    """是否响应."""
+    """是否响应 (responded)."""
 
     YES = "yes"
     PARTIAL = "partial"
     NO = "no"
     DEVIATION = "deviation"
+
+
+class RowStatus(str, Enum):
+    """状态 (status) — row lifecycle, distinct from 是否响应."""
+
+    OPEN = "open"
+    FILLED = "filled"
+    LOCKED = "locked"
 
 
 class ScoringPoint(BaseModel):
@@ -72,25 +84,26 @@ class Brief(BaseModel):
 
 
 class MatrixRow(BaseModel):
-    """条款 → 是否响应 → 证据页码 → 意见."""
+    """条款 / 是否响应 / 证据页码 / 意见 / 状态."""
 
     clause_id: str
     clause: str
     responded: ResponseStatus = ResponseStatus.NO
     evidence_page: str = ""
-    comment: str = ""
+    opinion: str = ""
+    status: RowStatus = RowStatus.OPEN
     category: str = "requirement"
 
     def as_prompt_line(self) -> str:
         page = self.evidence_page or "-"
         return (
             f"| {self.clause_id} | {self.clause} | {self.responded.value} "
-            f"| {page} | {self.comment or '-'} |"
+            f"| {page} | {self.opinion or '-'} | {self.status.value} |"
         )
 
 
 class ComplianceMatrix(BaseModel):
-    """响应对照表. Locked by the user in the confirm phase."""
+    """响应对照表. User locks it to enter phase=locked."""
 
     title: str = "响应对照表"
     rows: list[MatrixRow] = Field(default_factory=list)
@@ -103,15 +116,17 @@ class ComplianceMatrix(BaseModel):
             return
         self.locked = True
         self.locked_at = iso_now()
+        for row in self.rows:
+            row.status = RowStatus.LOCKED
 
     def as_prompt_table(self) -> str:
         header = (
             f"# {self.title} (v{self.version}, "
             f"{'LOCKED' if self.locked else 'draft'})\n\n"
-            "| 条款ID | 条款 | 是否响应 | 证据页码 | 意见 |\n"
-            "| --- | --- | --- | --- | --- |\n"
+            "| 条款ID | 条款 | 是否响应 | 证据页码 | 意见 | 状态 |\n"
+            "| --- | --- | --- | --- | --- | --- |\n"
         )
-        body = "\n".join(r.as_prompt_line() for r in self.rows) or "| - | - | - | - | - |"
+        body = "\n".join(r.as_prompt_line() for r in self.rows) or "| - | - | - | - | - | - |"
         return header + body + "\n"
 
     def cycle_status(self, clause_id: str) -> MatrixRow:
@@ -126,6 +141,7 @@ class ComplianceMatrix(BaseModel):
         for row in self.rows:
             if row.clause_id == clause_id:
                 row.responded = order[(order.index(row.responded) + 1) % len(order)]
+                row.status = RowStatus.FILLED if row.responded is not ResponseStatus.NO else RowStatus.OPEN
                 return row
         raise KeyError(clause_id)
 
@@ -155,8 +171,57 @@ class DraftVersion(BaseModel):
     note: str = ""
 
 
-class SessionMeta(BaseModel):
-    phase: Phase = Phase.IDLE
+class SectionDiff(BaseModel):
+    heading: str
+    diff: str
+
+
+class ReviewPacket(BaseModel):
+    """Review-phase model input: ONLY brief + matrix + chapter_diff."""
+
+    brief: Brief
+    matrix: ComplianceMatrix
+    chapter_diff: list[SectionDiff] = Field(default_factory=list)
+
+    def as_prompt(self) -> str:
+        diff_blocks = []
+        for item in self.chapter_diff:
+            diff_blocks.append(f"### {item.heading}\n```diff\n{item.diff}\n```")
+        diffs = "\n\n".join(diff_blocks) or "(empty previous version)"
+        return (
+            "Review-phase input is strictly limited to brief + matrix + chapter_diff. "
+            "You do not have repository access. You do not receive the raw tender.\n\n"
+            f"{self.brief.as_prompt_block()}\n"
+            f"{self.matrix.as_prompt_table()}\n"
+            f"## chapter_diff\n{diffs}\n"
+        )
+
+    def allowed_keys(self) -> tuple[str, ...]:
+        return ("brief", "matrix", "chapter_diff")
+
+
+def format_artifact_version(n: int) -> str:
+    if n < 1:
+        return ""
+    return f"v{n}"
+
+
+def next_artifact_version(current: str) -> str:
+    if not current:
+        return "v1"
+    return f"v{int(current.lstrip('v')) + 1}"
+
+
+class SessionState(BaseModel):
+    """Required product session fields — persisted as session.json."""
+
+    phase: Phase = Phase.DISCUSS
+    primary: str
+    advisors: list[str]
+    brief: Brief | None = None
+    matrix: ComplianceMatrix = Field(default_factory=ComplianceMatrix)
+    artifact_version: str = ""
+    write_lock: bool = True
     requirement_path: str = ""
     created_at: str = Field(default_factory=iso_now)
     updated_at: str = Field(default_factory=iso_now)
@@ -166,30 +231,37 @@ class SessionMeta(BaseModel):
     def bump(self) -> None:
         self.updated_at = iso_now()
 
-
-class SectionDiff(BaseModel):
-    heading: str
-    diff: str
-
-
-class ReviewPacket(BaseModel):
-    """The only context advisors receive in the review phase."""
-
-    brief: Brief
-    matrix: ComplianceMatrix
-    diffs: list[SectionDiff] = Field(default_factory=list)
-    version: int
-
-    def as_prompt(self) -> str:
-        diff_blocks = []
-        for item in self.diffs:
-            diff_blocks.append(f"### {item.heading}\n```diff\n{item.diff}\n```")
-        diffs = "\n\n".join(diff_blocks) or "(no textual diff — empty previous version)"
-        return (
-            "You are reviewing a draft. You are given ONLY the original brief, "
-            "the locked compliance matrix, and chapter/section diffs. "
-            "You do not have repository access.\n\n"
-            f"{self.brief.as_prompt_block()}\n"
-            f"{self.matrix.as_prompt_table()}\n"
-            f"## Chapter diffs (v{self.version})\n{diffs}\n"
+    def allows_write(self, actor_id: str) -> bool:
+        """Filesystem artifact writes: execute|revise AND actor is primary."""
+        return bool(
+            self.write_lock
+            and self.phase in WRITE_PHASES
+            and actor_id == self.primary
         )
+
+    def tools_for(self, actor_id: str) -> list[str]:
+        """Advisors always get tools: []. Primary gets write_file only in write phases."""
+        if actor_id != self.primary:
+            return []
+        if self.allows_write(actor_id):
+            return ["write_file"]
+        return []
+
+    def contract_view(self) -> dict[str, Any]:
+        return {
+            "phase": self.phase.value,
+            "primary": self.primary,
+            "advisors": list(self.advisors),
+            "brief": None if self.brief is None else self.brief.summary,
+            "matrix": {
+                "title": self.matrix.title,
+                "locked": self.matrix.locked,
+                "rows": [r.model_dump() for r in self.matrix.rows],
+            },
+            "artifact_version": self.artifact_version,
+            "write_lock": self.write_lock,
+        }
+
+
+# Back-compat alias used by older store helpers in this scaffold.
+SessionMeta = SessionState

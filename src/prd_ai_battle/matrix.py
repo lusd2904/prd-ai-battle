@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from prd_ai_battle.models import Brief, ComplianceMatrix, MatrixRow, ResponseStatus
+from prd_ai_battle.models import Brief, ComplianceMatrix, MatrixRow, ResponseStatus, RowStatus
 
 
 def matrix_from_brief(brief: Brief) -> ComplianceMatrix:
@@ -36,7 +36,8 @@ def matrix_from_brief(brief: Brief) -> ComplianceMatrix:
                 clause=item,
                 responded=ResponseStatus.NO,
                 category="disqualifier",
-                comment="Must not trigger 废标",
+                opinion="Must not trigger 废标",
+                status=RowStatus.OPEN,
             )
         )
         n += 1
@@ -51,12 +52,15 @@ def apply_offline_seed(matrix: ComplianceMatrix) -> None:
         if row.category == "disqualifier":
             row.responded = ResponseStatus.YES
             row.evidence_page = "封皮 / 投标函"
-            row.comment = "密封、报价、认证、有效期均按须知执行"
+            row.opinion = "密封、报价、认证、有效期均按须知执行"
+            row.status = RowStatus.FILLED
         elif row.category == "starred":
             row.responded = ResponseStatus.YES
             row.evidence_page = "技术方案 ch.5"
-            row.comment = "★ 条款在实施方案中逐条响应"
+            row.opinion = "★ 条款在实施方案中逐条响应"
+            row.status = RowStatus.FILLED
         else:
             row.responded = ResponseStatus.PARTIAL
             row.evidence_page = "商务 / 技术分册"
-            row.comment = "评分点已列提纲，待一次稿补证据"
+            row.opinion = "评分点已列提纲，待一次稿补证据"
+            row.status = RowStatus.FILLED

@@ -25,15 +25,19 @@ async def test_tui_full_offline_round(tmp_path: Path):
         await _wait_idle(app, pilot)
         assert any(b.model_id == "primary" for b in app.query(Bubble))
         app.action_lock_matrix()
-        assert app.session.machine.phase is Phase.CONFIRM
+        assert app.session.state.phase is Phase.LOCKED
+        assert not app.session.state.allows_write(app.session.state.primary)
         app.action_execute()
         await _wait_idle(app, pilot)
-        assert app.session.store.latest_version() == 1
+        assert app.session.state.phase is Phase.EXECUTE
+        assert app.session.state.artifact_version == "v1"
         app.action_review()
         await _wait_idle(app, pilot)
-        assert app.session.machine.phase is Phase.REVIEW
+        assert app.session.state.phase is Phase.REVIEW
         app.action_revise()
         await _wait_idle(app, pilot)
+        assert app.session.state.phase is Phase.REVISE
+        assert app.session.state.artifact_version == "v2"
         assert app.session.store.latest_version() == 2
         assert app.session.store.read_draft(1)
         assert app.session.store.read_draft(2)

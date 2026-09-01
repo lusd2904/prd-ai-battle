@@ -42,10 +42,8 @@ class ChatClient:
     ) -> AsyncIterator[str]:
         """Yield content tokens from an OpenAI-compatible SSE stream.
 
-        `tools` is accepted so the write-lock can refuse to advertise write
-        tools to advisors; the scaffold does not send tool calls yet.
+        Advisors must be called with tools=[] — that empty list is sent on the wire.
         """
-        _ = tools
         key = model.api_key()
         if not key:
             raise LLMError(f"Missing API key in env {model.api_key_env} for model {model.id}")
@@ -55,6 +53,7 @@ class ChatClient:
             "messages": messages,
             "temperature": model.temperature,
             "stream": True,
+            "tools": [_tool_spec(name) for name in (tools or [])],
         }
         headers = {
             "Authorization": f"Bearer {key}",
@@ -114,12 +113,29 @@ class MockChatClient(ChatClient):
             yield text[i : i + step]
 
 
+def _tool_spec(name: str) -> dict:
+    return {
+        "type": "function",
+        "function": {
+            "name": name,
+            "description": "Write a draft artifact. Primary only; execute/revise phases.",
+            "parameters": {
+                "type": "object",
+                "properties": {"path": {"type": "string"}, "content": {"type": "string"}},
+                "required": ["path", "content"],
+            },
+        },
+    }
+
+
 def _infer_phase(messages: list[dict[str, str]]) -> Phase:
     blob = " ".join(m.get("content", "") for m in messages).lower()
-    if "chapter diffs" in blob or "chapter/section diffs" in blob or "you are reviewing" in blob:
+    if "chapter_diff" in blob or "you are reviewing" in blob or "review-phase input" in blob:
         return Phase.REVIEW
-    if "write the first draft" in blob or "revise the draft" in blob:
-        return Phase.CONFIRM
+    if "revise the draft" in blob:
+        return Phase.REVISE
+    if "write the first draft" in blob:
+        return Phase.EXECUTE
     return Phase.DISCUSS
 
 
@@ -140,7 +156,7 @@ def mock_reply(model_id: str, phase: Phase, messages: list[dict[str, str]]) -> s
             "Section diff vs brief: ★ 5.2 storage (500TB / 3 replicas / 8000 IOPS) is only "
             "partially answered. Recommend a capacity table and an IOPS test method."
         )
-    if phase is Phase.CONFIRM:
+    if phase in {Phase.EXECUTE, Phase.REVISE}:
         return _primary_draft_markdown()
     # discuss
     if is_primary:

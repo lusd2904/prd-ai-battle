@@ -1,74 +1,112 @@
-"""Discuss → confirm → review state machine.
+"""discuss → locked → execute → review → revise.
 
-Filesystem writes are forbidden until the user locks the compliance matrix
-and only the designated primary may write afterwards.
+Artifact filesystem writes are allowed only in execute|revise by primary.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from prd_ai_battle.models import Phase
+from prd_ai_battle.models import WRITE_PHASES, Phase, SessionState
 
 
 class IllegalTransition(RuntimeError):
     pass
 
 
-# Allowed directed edges. IDLE is the pre-discuss ingest state.
 TRANSITIONS: dict[Phase, frozenset[Phase]] = {
-    Phase.IDLE: frozenset({Phase.DISCUSS}),
-    Phase.DISCUSS: frozenset({Phase.CONFIRM}),
-    Phase.CONFIRM: frozenset({Phase.REVIEW}),
-    Phase.REVIEW: frozenset({Phase.CONFIRM, Phase.REVIEW}),
+    Phase.DISCUSS: frozenset({Phase.LOCKED}),
+    Phase.LOCKED: frozenset({Phase.EXECUTE}),
+    Phase.EXECUTE: frozenset({Phase.REVIEW}),
+    Phase.REVIEW: frozenset({Phase.REVISE}),
+    Phase.REVISE: frozenset({Phase.REVIEW}),
 }
 
 
 @dataclass
 class StateMachine:
-    phase: Phase = Phase.IDLE
-    matrix_locked: bool = False
-    has_brief: bool = False
-    draft_count: int = 0
+    state: SessionState
     history: list[tuple[Phase, Phase]] = field(default_factory=list)
+
+    @property
+    def phase(self) -> Phase:
+        return self.state.phase
+
+    @property
+    def primary(self) -> str:
+        return self.state.primary
+
+    @property
+    def advisors(self) -> list[str]:
+        return list(self.state.advisors)
+
+    @property
+    def has_brief(self) -> bool:
+        return self.state.brief is not None
+
+    @property
+    def matrix_locked(self) -> bool:
+        return self.state.matrix.locked
+
+    @property
+    def artifact_version(self) -> str:
+        return self.state.artifact_version
 
     def can_advance(self, dest: Phase) -> bool:
         return dest in TRANSITIONS[self.phase]
 
     def advance(self, dest: Phase) -> Phase:
-        if dest == self.phase and dest is Phase.REVIEW:
-            self.history.append((self.phase, dest))
-            return self.phase
         if not self.can_advance(dest):
             raise IllegalTransition(f"Cannot go {self.phase.value} → {dest.value}")
-        if dest is Phase.DISCUSS and not self.has_brief:
-            raise IllegalTransition("Cannot discuss without an extracted brief")
-        if dest is Phase.CONFIRM and not self.matrix_locked:
-            raise IllegalTransition("Cannot enter confirm until the matrix is locked")
-        if dest is Phase.REVIEW and self.draft_count < 1:
+        if dest is Phase.LOCKED and not self.has_brief:
+            raise IllegalTransition("Cannot lock without an extracted brief")
+        if dest is Phase.EXECUTE and not self.state.matrix.locked:
+            raise IllegalTransition("Cannot execute until the matrix is locked")
+        if dest is Phase.REVIEW and not self.state.artifact_version:
             raise IllegalTransition("Cannot review until the primary has written a draft")
         previous = self.phase
-        self.phase = dest
+        self.state.phase = dest
         self.history.append((previous, dest))
         return self.phase
 
-    def lock_matrix(self) -> None:
+    def enter_discuss(self) -> Phase:
+        if not self.has_brief:
+            raise IllegalTransition("Cannot discuss without an extracted brief")
+        if self.phase is not Phase.DISCUSS:
+            raise IllegalTransition(f"Discuss is only valid at the start (in {self.phase.value})")
+        return self.phase
+
+    def lock_matrix(self) -> Phase:
         if self.phase is not Phase.DISCUSS:
             raise IllegalTransition(f"Matrix can only be locked from discuss (in {self.phase.value})")
         if not self.has_brief:
             raise IllegalTransition("Cannot lock an empty session — ingest a requirement first")
-        self.matrix_locked = True
-        self.advance(Phase.CONFIRM)
+        if not self.state.matrix.rows:
+            raise IllegalTransition("Cannot lock an empty 对照表")
+        self.state.matrix.lock()
+        return self.advance(Phase.LOCKED)
 
-    def record_draft(self) -> None:
-        if not self.matrix_locked:
-            raise IllegalTransition("Primary cannot write until the matrix is locked")
-        if self.phase not in {Phase.CONFIRM, Phase.REVIEW}:
-            raise IllegalTransition(f"Writes are not allowed in phase {self.phase.value}")
-        self.draft_count += 1
+    def enter_execute(self) -> Phase:
+        if self.phase is Phase.EXECUTE:
+            return self.phase
+        return self.advance(Phase.EXECUTE)
 
-    def start_review(self) -> Phase:
+    def enter_review(self) -> Phase:
         return self.advance(Phase.REVIEW)
 
-    def writes_allowed(self) -> bool:
-        return self.matrix_locked and self.phase in {Phase.CONFIRM, Phase.REVIEW}
+    def enter_revise(self) -> Phase:
+        if self.phase is Phase.REVISE:
+            return self.phase
+        return self.advance(Phase.REVISE)
+
+    def record_draft(self, version: str) -> None:
+        if not self.state.allows_write(self.state.primary):
+            raise IllegalTransition(f"Writes are not allowed in phase {self.phase.value}")
+        self.state.artifact_version = version
+
+    def writes_allowed(self, actor_id: str | None = None) -> bool:
+        actor = actor_id if actor_id is not None else self.state.primary
+        return self.state.allows_write(actor)
+
+    def tools_for(self, actor_id: str) -> list[str]:
+        return self.state.tools_for(actor_id)

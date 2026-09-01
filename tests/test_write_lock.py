@@ -2,60 +2,79 @@ from pathlib import Path
 
 import pytest
 
-from prd_ai_battle.models import Phase
+from prd_ai_battle.models import Brief, ComplianceMatrix, MatrixRow, Phase, SessionState
 from prd_ai_battle.state import StateMachine
 from prd_ai_battle.write_lock import ArtifactWriter, WriteDenied, WriteLock
 
 
-def _ready_machine() -> StateMachine:
-    sm = StateMachine(has_brief=True)
-    sm.advance(Phase.DISCUSS)
-    sm.lock_matrix()
-    return sm
+def _machine(phase: Phase = Phase.DISCUSS) -> StateMachine:
+    state = SessionState(
+        primary="primary",
+        advisors=["advisor-a"],
+        phase=phase,
+        brief=Brief(title="demo", summary="demo"),
+        matrix=ComplianceMatrix(
+            rows=[MatrixRow(clause_id="S01", clause="★ compute")],
+            locked=phase is not Phase.DISCUSS,
+        ),
+        write_lock=True,
+    )
+    if phase is not Phase.DISCUSS:
+        state.matrix.locked = True
+    return StateMachine(state)
 
 
-def test_advisor_never_gets_write_tools():
-    sm = _ready_machine()
-    lock = WriteLock("primary")
-    assert lock.tools_for("advisor-a", sm) == []
-    assert lock.tools_for("primary", sm) == ["write_file"]
+def test_advisor_always_gets_empty_tools_in_every_phase():
+    lock = WriteLock(_machine().state)
+    for phase in Phase:
+        sm = _machine(phase)
+        sm.state.artifact_version = "v1"
+        assert sm.tools_for("advisor-a") == []
+        assert lock.tools_for("advisor-a", sm) == []
 
 
-def test_primary_has_no_write_tools_in_discuss():
-    sm = StateMachine(has_brief=True)
-    sm.advance(Phase.DISCUSS)
-    lock = WriteLock("primary")
-    assert lock.tools_for("primary", sm) == []
-    with pytest.raises(WriteDenied, match="forbidden"):
-        lock.assert_can_write("primary", sm)
+def test_primary_tools_only_in_execute_and_revise():
+    for phase in Phase:
+        sm = _machine(phase)
+        sm.state.artifact_version = "v1"
+        tools = sm.tools_for("primary")
+        if phase in {Phase.EXECUTE, Phase.REVISE}:
+            assert tools == ["write_file"]
+        else:
+            assert tools == []
 
 
-def test_advisor_write_denied_even_after_lock(tmp_path: Path):
-    sm = _ready_machine()
-    writer = ArtifactWriter(tmp_path / "drafts", WriteLock("primary"), sm)
+def test_primary_cannot_write_in_discuss_or_locked(tmp_path: Path):
+    for phase in (Phase.DISCUSS, Phase.LOCKED, Phase.REVIEW):
+        sm = _machine(phase)
+        writer = ArtifactWriter(tmp_path / "drafts", WriteLock(sm.state), sm)
+        with pytest.raises(WriteDenied):
+            writer.write("primary", "response.md", "draft")
+
+
+def test_advisor_write_denied_in_execute(tmp_path: Path):
+    sm = _machine(Phase.EXECUTE)
+    writer = ArtifactWriter(tmp_path / "drafts", WriteLock(sm.state), sm)
     with pytest.raises(WriteDenied, match="not the primary"):
-        writer.write("advisor-a", "sneaky.md", "nope", version=1)
-    assert not (tmp_path / "drafts" / "v1" / "sneaky.md").exists()
+        writer.write("advisor-a", "sneaky.md", "nope")
+    assert not (tmp_path / "drafts").exists() or not any((tmp_path / "drafts").rglob("sneaky.md"))
 
 
-def test_primary_cannot_write_before_lock(tmp_path: Path):
-    sm = StateMachine(has_brief=True)
-    sm.advance(Phase.DISCUSS)
-    writer = ArtifactWriter(tmp_path / "drafts", WriteLock("primary"), sm)
-    with pytest.raises(WriteDenied, match="not locked"):
-        writer.write("primary", "response.md", "draft", version=1)
-
-
-def test_primary_write_after_lock(tmp_path: Path):
-    sm = _ready_machine()
-    writer = ArtifactWriter(tmp_path / "drafts", WriteLock("primary"), sm)
-    path = writer.write("primary", "response.md", "# draft\n", version=1)
+def test_primary_write_in_execute_and_revise(tmp_path: Path):
+    sm = _machine(Phase.EXECUTE)
+    writer = ArtifactWriter(tmp_path / "drafts", WriteLock(sm.state), sm)
+    path = writer.write("primary", "response.md", "# draft\n")
     assert path.read_text(encoding="utf-8") == "# draft\n"
-    assert sm.draft_count == 1
+    assert sm.artifact_version == "v1"
+    sm.enter_review()
+    sm.enter_revise()
+    path2 = writer.write("primary", "response.md", "# draft v2\n")
+    assert "v2" in str(path2)
+    assert sm.artifact_version == "v2"
 
 
 def test_rejects_path_escape(tmp_path: Path):
-    sm = _ready_machine()
-    writer = ArtifactWriter(tmp_path / "drafts", WriteLock("primary"), sm)
+    sm = _machine(Phase.EXECUTE)
+    writer = ArtifactWriter(tmp_path / "drafts", WriteLock(sm.state), sm)
     with pytest.raises(WriteDenied, match="relative"):
-        writer.write("primary", "../escape.md", "x", version=1)
+        writer.write("primary", "../escape.md", "x")
