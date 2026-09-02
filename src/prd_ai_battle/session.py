@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -26,6 +27,16 @@ from prd_ai_battle.state import IllegalTransition, StateMachine
 from prd_ai_battle.store import WorkspaceStore
 from prd_ai_battle.write_lock import ArtifactWriter, WriteDenied, WriteLock
 
+OPENING_PROMPT = (
+    "Discuss the brief in one shared thread. Identify must-win scoring points, "
+    "废标风险, and what should go into the 响应对照表. Do not write files."
+)
+
+CROSSING_PROMPT = (
+    "交叉讨论：阅读整条时间线上每个人的发言，然后回应他们——"
+    "可以同意、反驳、或向某一发言人提问。不要写文件。"
+)
+
 
 class Session:
     def __init__(self, config: AppConfig, root: Path | None = None) -> None:
@@ -49,6 +60,9 @@ class Session:
         self.client: ChatClient = MockChatClient() if config.offline else ChatClient()
         self.requirement: str = ""
         self._buffers: dict[str, str] = {}
+        self._finalized: set[str] = set()
+        self._stop_requested = False
+        self._discuss_cancel: asyncio.Event | None = None
         self.last_write_path: Path | None = None
         if self.store.requirement_path.exists() and not self.requirement:
             self.requirement = self.store.requirement_path.read_text(encoding="utf-8")
@@ -110,6 +124,27 @@ class Session:
     def speakers(self) -> list[str]:
         """Current yaml primary + advisors[] — never a hardcoded seed pair."""
         return self.config.model_ids()
+
+    def request_stop(self) -> None:
+        """Cancel an in-flight parallel discuss. Phase stays discuss; no artifact writes."""
+        self._stop_requested = True
+        ev = self._discuss_cancel
+        if ev is not None:
+            ev.set()
+
+    def stop_requested(self) -> bool:
+        return self._stop_requested
+
+    def _reset_stop(self) -> None:
+        self._stop_requested = False
+        self._discuss_cancel = None
+
+    def discuss_assistant_count(self) -> int:
+        return sum(
+            1
+            for m in self.load_timeline()
+            if m.role == "assistant" and m.phase is Phase.DISCUSS
+        )
 
     def _client_messages(self, extra_user: str) -> list[dict[str, str]]:
         if self.state.brief is None:
@@ -205,19 +240,54 @@ class Session:
             out[model_id] = [] if model_id != self.state.primary else self.state.tools_for(model_id)
         return out
 
-    async def discuss(self, user_prompt: str | None = None) -> AsyncIterator[StreamDelta]:
+    async def discuss(
+        self,
+        user_prompt: str | None = None,
+        *,
+        crossing: bool | None = None,
+        reset_stop: bool = True,
+    ) -> AsyncIterator[StreamDelta]:
+        """One discuss round. Opening (round 0) or crossing (later rounds).
+
+        Opening: yaml primary + advisors[] speak in parallel on the brief.
+        Crossing: every speaker receives the FULL current timeline[] + brief,
+        then replies (agree / disagree / ask). No artifact writes. write_lock
+        stays closed. Speakers come from the current yaml, never seed ids.
+        """
         self.enter_discuss()
         if self.state.phase is not Phase.DISCUSS:
             raise IllegalTransition(f"Discuss is only valid in discuss (in {self.state.phase.value})")
-        prompt = user_prompt or (
-            "Discuss the brief in one shared thread. Identify must-win scoring points, "
-            "废标风险, and what should go into the 响应对照表. Do not write files."
-        )
+        if reset_stop:
+            self._reset_stop()
+        if crossing is None:
+            crossing = self.discuss_assistant_count() > 0
+        prompt = user_prompt or (CROSSING_PROMPT if crossing else OPENING_PROMPT)
         self._persist_user(prompt, Phase.DISCUSS)
         models = self.config.all_models()
         messages_for = {m.id: self._discuss_messages(m.id, prompt) for m in models}
         tools_for = self._tools_map([m.id for m in models])
-        async for event in self._run_models(models, messages_for, tools_for, Phase.DISCUSS):
+        async for event in self._run_models(
+            models, messages_for, tools_for, Phase.DISCUSS, cancellable=True
+        ):
+            yield event
+
+    async def discuss_group(self, user_prompt: str | None = None) -> AsyncIterator[StreamDelta]:
+        """Product discuss: opening (if needed) then one crossing round.
+
+        Later calls are crossing-only — repeat until the user locks the 对照表.
+        Interrupt stops further rounds; partial utterances stay on the timeline.
+        """
+        self._reset_stop()
+        had_assistants = self.discuss_assistant_count() > 0
+        if not had_assistants:
+            async for event in self.discuss(user_prompt, crossing=False, reset_stop=False):
+                yield event
+            if self._stop_requested:
+                return
+            async for event in self.discuss(None, crossing=True, reset_stop=False):
+                yield event
+            return
+        async for event in self.discuss(user_prompt, crossing=True, reset_stop=False):
             yield event
 
     async def print_unified_stream(self, user_prompt: str | None = None, *, sink=None) -> None:
@@ -229,7 +299,7 @@ class Session:
         out.write(f"# Shared discuss  (speakers: {speakers})\n")
         out.write("# One timeline — not OpenCode teammate panes\n")
         out.flush()
-        async for event in self.discuss(user_prompt):
+        async for event in self.discuss_group(user_prompt):
             if not event.done:
                 continue
             for msg in reversed(self.load_timeline()):
@@ -336,17 +406,43 @@ class Session:
         messages_for: dict[str, list[dict[str, str]]],
         tools_for: dict[str, list[str]],
         phase: Phase,
+        *,
+        cancellable: bool = False,
     ) -> AsyncIterator[StreamDelta]:
         for mid, tools in list(tools_for.items()):
             if mid != self.state.primary and tools:
                 raise WriteDenied(f"Advisor {mid} must receive tools: []")
         self._buffers = {m.id: "" for m in models}
-        async for event in stream_parallel(self.client, models, messages_for, tools_for):
-            if event.text:
-                self._buffers[event.model_id] = self._buffers.get(event.model_id, "") + event.text
-            if event.done:
-                self._persist_assistant(event.model_id, self._buffers.get(event.model_id, ""), phase)
-            yield event
+        self._finalized = set()
+        cancel: asyncio.Event | None = None
+        if cancellable:
+            cancel = asyncio.Event()
+            self._discuss_cancel = cancel
+            if self._stop_requested:
+                cancel.set()
+        try:
+            async for event in stream_parallel(
+                self.client, models, messages_for, tools_for, cancel=cancel
+            ):
+                if event.text:
+                    self._buffers[event.model_id] = self._buffers.get(event.model_id, "") + event.text
+                if event.done:
+                    self._persist_assistant(event.model_id, self._buffers.get(event.model_id, ""), phase)
+                    self._finalized.add(event.model_id)
+                yield event
+        finally:
+            self._flush_partials(phase)
+            if cancellable:
+                self._discuss_cancel = None
+
+    def _flush_partials(self, phase: Phase) -> None:
+        """Keep interrupted tokens on the shared timeline. No draft files."""
+        for mid, text in list(self._buffers.items()):
+            if mid in self._finalized:
+                continue
+            if text.strip():
+                self._persist_assistant(mid, text, phase)
+                self._finalized.add(mid)
 
     def _persist_user(self, content: str, phase: Phase) -> None:
         msg = ChatMessage(model_id="user", role="user", phase=phase, content=content)
@@ -377,7 +473,7 @@ async def run_offline_pipeline(workspace: Path, *, seed_matrix: bool = True) -> 
     if seed_matrix:
         session.seed_matrix_offline()
     discuss_ids: set[str] = set()
-    async for event in session.discuss():
+    async for event in session.discuss_group():
         if event.text:
             discuss_ids.add(event.model_id)
     session.lock_matrix()

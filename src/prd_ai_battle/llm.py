@@ -1,12 +1,13 @@
 """OpenAI-compatible Chat Completions client with true parallel SSE streams.
 
-Also ships an offline mock so the TUI is usable with no API keys.
+Also ships an offline mock so the board is usable with no network.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import re
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
@@ -14,6 +15,10 @@ import httpx
 
 from prd_ai_battle.config import ModelConfig
 from prd_ai_battle.models import ChatMessage, Phase
+
+# Opening-round marker: unique per yaml speaker id so a later crossing
+# reply can prove it read someone else's bubble. Not a seed model name.
+ROUND0_MARKER = re.compile(r"\[round0-only:([^\]]+)\]")
 
 
 @dataclass
@@ -90,7 +95,7 @@ class ChatClient:
 
 
 class MockChatClient(ChatClient):
-    """Deterministic streaming replies for offline / demo mode."""
+    """Deterministic streaming replies for offline / --offline board mode."""
 
     def __init__(self, delay_s: float = 0.012) -> None:
         super().__init__()
@@ -140,6 +145,16 @@ def _infer_phase(messages: list[dict[str, str]]) -> Phase:
     return Phase.DISCUSS
 
 
+def opening_marker(model_id: str) -> str:
+    """Content that exists only in this speaker's round-0 bubble."""
+    return f"[round0-only:{model_id}]"
+
+
+def other_round0_markers(blob: str, model_id: str) -> list[str]:
+    """Speaker ids whose round-0 markers appear in the shared timeline."""
+    return [mid for mid in ROUND0_MARKER.findall(blob) if mid != model_id]
+
+
 def mock_reply(model_id: str, phase: Phase, messages: list[dict[str, str]]) -> str:
     is_primary = model_id == "primary" or model_id.endswith("primary")
     if phase is Phase.REVIEW:
@@ -159,23 +174,35 @@ def mock_reply(model_id: str, phase: Phase, messages: list[dict[str, str]]) -> s
         )
     if phase in {Phase.EXECUTE, Phase.REVISE}:
         return _primary_draft_markdown()
-    # discuss
+    blob = "\n".join(m.get("content", "") for m in messages)
+    others = other_round0_markers(blob, model_id)
+    has_thread = "Shared discuss timeline" in blob or "交叉讨论" in blob
+    if has_thread and others:
+        seen = others[0]
+        return (
+            f"Crossing as {model_id}. I read {seen}'s opening and quote "
+            f"{opening_marker(seen)} — agree on locking the 对照表, "
+            f"push back if anyone dumps the 招标文件."
+        )
+    # Round 0: parallel opening. Marker is unique to this yaml speaker id.
+    marker = opening_marker(model_id)
     if is_primary:
         return (
-            "I read the brief, not the raw tender. Highest risk is the ★ must-respond clauses "
-            "(compute / storage / 等保) plus 废标项 on certificates and budget. "
-            "I propose we lock a 响应对照表 covering starred items, scoring points, and "
-            "disqualifiers before anyone writes files."
+            f"{marker} I read the brief, not the raw tender. Highest risk is the ★ "
+            "must-respond clauses (compute / storage / 等保) plus 废标项 on certificates "
+            "and budget. I propose we lock a 响应对照表 covering starred items, scoring "
+            "points, and disqualifiers before anyone writes files."
         )
     if "advisor-b" in model_id:
         return (
-            "Disagree slightly: lock the matrix now, but mark 类似业绩 and 项目团队 as "
-            "PARTIAL until we list named contracts and PMP/软考 evidence. "
+            f"{marker} Disagree slightly: lock the matrix now, but mark 类似业绩 and "
+            "项目团队 as PARTIAL until we list named contracts and PMP/软考 evidence. "
             "Do not dump the whole 招标文件 into context — the brief is enough."
         )
     return (
-        "Agree with a shared chat. Scoring is 30/30/40 — the technical 40 is where we lose. "
-        "Call out 等保 2.0 三级, 180-day logs, and 90-day初验 as must-win rows in the matrix."
+        f"{marker} Agree with a shared chat. Scoring is 30/30/40 — the technical 40 "
+        "is where we lose. Call out 等保 2.0 三级, 180-day logs, and 90-day初验 as "
+        "must-win rows in the matrix."
     )
 
 
@@ -206,12 +233,18 @@ async def stream_parallel(
     models: list[ModelConfig],
     messages_for: dict[str, list[dict[str, str]]],
     tools_for: dict[str, list[str]],
+    *,
+    cancel: asyncio.Event | None = None,
 ) -> AsyncIterator[StreamDelta]:
     """Fan out one SSE stream per model and yield labeled deltas as they arrive.
 
     One model timeout or HTTP failure is isolated: it becomes an ``[error]``
     delta for that id and does **not** cancel the other streams. Discuss and
     review must keep going when a single advisor dies.
+
+    ``cancel`` stops every in-flight stream. Already-queued tokens are drained
+    so partial utterances can stay on the timeline. CancelledError is not an
+    isolated ``[error]`` — the user asked to stop.
     """
 
     queue: asyncio.Queue[StreamDelta | None] = asyncio.Queue()
@@ -223,15 +256,65 @@ async def stream_parallel(
                 messages_for[model.id],
                 tools=tools_for.get(model.id, []),
             ):
+                if cancel is not None and cancel.is_set():
+                    break
                 await queue.put(StreamDelta(model.id, token, False))
             await queue.put(StreamDelta(model.id, "", True))
+        except asyncio.CancelledError:
+            await queue.put(StreamDelta(model.id, "", True))
+            raise
         except Exception as exc:  # noqa: BLE001 — isolate; do not abort siblings
             await queue.put(StreamDelta(model.id, f"\n[error] {exc}", True))
 
     tasks = [asyncio.create_task(run(m)) for m in models]
     finished = 0
-    while finished < len(tasks):
-        event = await queue.get()
+    pending = len(tasks)
+
+    async def _drain_rest() -> AsyncIterator[StreamDelta]:
+        nonlocal finished
+        while True:
+            try:
+                event = queue.get_nowait()
+            except asyncio.QueueEmpty:
+                return
+            if event is None:
+                continue
+            if event.done:
+                finished += 1
+            yield event
+
+    while finished < pending:
+        if cancel is not None and cancel.is_set():
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            async for event in _drain_rest():
+                yield event
+            break
+        if cancel is None:
+            event = await queue.get()
+        else:
+            getter = asyncio.create_task(queue.get())
+            stopper = asyncio.create_task(cancel.wait())
+            done, leftover = await asyncio.wait(
+                {getter, stopper}, return_when=asyncio.FIRST_COMPLETED
+            )
+            for leftover_task in leftover:
+                leftover_task.cancel()
+            if stopper in done and cancel.is_set():
+                for task in tasks:
+                    if not task.done():
+                        task.cancel()
+                if getter.done() and not getter.cancelled():
+                    event = getter.result()
+                    if event is not None:
+                        if event.done:
+                            finished += 1
+                        yield event
+                async for drained in _drain_rest():
+                    yield drained
+                break
+            event = getter.result()
         if event is None:
             continue
         if event.done:
@@ -242,3 +325,16 @@ async def stream_parallel(
 
 def transcript_to_openai(messages: list[ChatMessage]) -> list[dict[str, str]]:
     return [{"role": m.role, "content": m.content} for m in messages]
+
+
+__all__ = [
+    "ChatClient",
+    "LLMError",
+    "MockChatClient",
+    "StreamDelta",
+    "mock_reply",
+    "opening_marker",
+    "other_round0_markers",
+    "stream_parallel",
+    "transcript_to_openai",
+]

@@ -97,9 +97,12 @@ class BattleApp(App[None]):
         Binding("r", "review", "审核", show=True),
         Binding("v", "revise", "修订", show=True),
         Binding("slash", "focus_composer", "输入", show=True),
-        Binding("escape", "blur_composer", "取消", show=False),
+        Binding("x", "export_bundle", "导出", show=True),
+        Binding("escape", "escape", "停止", show=True),
         Binding("q", "quit", "退出", show=True),
     ]
+
+    STOP_COMMANDS = frozenset({"停止", "/停止", "stop", "/stop"})
 
     def __init__(
         self,
@@ -116,6 +119,7 @@ class BattleApp(App[None]):
         self._live: dict[str, Bubble] = {}
         self._busy = False
         self.status_text = ""
+        self._stream_kind = "chat"
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -173,7 +177,10 @@ class BattleApp(App[None]):
             matrix_locked=state.matrix.locked,
             writer_id=state.primary,
         )
-        self.query_one("#status", Static).update(self.status_text)
+        extra = ""
+        if self._busy and state.phase is Phase.DISCUSS:
+            extra = "    [bold #f2cc60]讨论中 — Esc 停止[/]"
+        self.query_one("#status", Static).update(self.status_text + extra)
         self.sub_title = header_subtitle(
             phase=state.phase,
             matrix_locked=state.matrix.locked,
@@ -262,6 +269,9 @@ class BattleApp(App[None]):
     def _submit_prompt(self, event: Input.Submitted) -> None:
         prompt = event.value.strip()
         event.input.value = ""
+        if prompt in self.STOP_COMMANDS:
+            self.action_stop_discuss()
+            return
         self.action_discuss(prompt or None)
 
     def action_focus_composer(self) -> None:
@@ -269,6 +279,32 @@ class BattleApp(App[None]):
 
     def action_blur_composer(self) -> None:
         self.query_one("#matrix", DataTable).focus()
+
+    def action_escape(self) -> None:
+        if self._busy and self.session.state.phase is Phase.DISCUSS:
+            self.action_stop_discuss()
+            return
+        self.action_blur_composer()
+
+    def action_stop_discuss(self) -> None:
+        if not self._busy:
+            self.notify("当前没有进行中的讨论", severity="information")
+            return
+        self.session.request_stop()
+        self._user_note("已停止讨论。部分发言保留在时间线。阶段仍为讨论，未写文件。")
+        self.notify("已停止讨论。部分发言保留在时间线。")
+
+    def action_export_bundle(self) -> None:
+        from prd_ai_battle.export import export_deliverable
+
+        payload = export_deliverable(self.session)
+        path = payload["path"]
+        if payload.get("draft_present"):
+            self.notify(f"已导出到 {path}")
+            self._user_note(f"已导出标书正文与对照表到 {path}")
+        else:
+            self.notify(f"已导出（尚无正文）到 {path}")
+            self._user_note(f"已导出对照表与讨论记录到 {path}（尚无标书正文）。")
 
     def action_load_sample(self) -> None:
         from prd_ai_battle.ingest import bundled_sample_path
@@ -283,8 +319,8 @@ class BattleApp(App[None]):
         if not self.session.brief:
             self.notify("请先载入需求（L）", severity="warning")
             return
-        self._user_note(prompt or "讨论 — 一条时间线，yaml 发言人，tools=[]，不写文件。")
-        self._run_stream(self.session.discuss(prompt))
+        self._user_note(prompt or "交叉讨论 — 先并行开场，再读整条时间线互相回应。不写文件。")
+        self._run_stream(self.session.discuss_group(prompt))
 
     def action_lock_matrix(self) -> None:
         try:
@@ -326,6 +362,7 @@ class BattleApp(App[None]):
 
     def _run_stream(self, agen, *, kind: str = "chat") -> None:
         self._live.clear()
+        self._stream_kind = kind
         self._set_busy(True)
         self._pump_stream(agen, kind)
 

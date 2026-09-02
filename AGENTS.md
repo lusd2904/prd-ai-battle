@@ -1,6 +1,6 @@
 # prd-ai-battle
 
-This repository is the product. OpenCode is the TUI/agent runtime launched as our branded workspace (`prd-ai-battle` / `./scripts/prd-ai-battle`). Do not treat this as an npm plugin for some other OpenCode install.
+This repository is the product. The user-facing skin is the Chinese Textual **board** (`prd-ai-battle` / `prd-ai-battle tui` / `./scripts/prd-ai-battle`). OpenCode is the execute/revise engine (`prd-ai-battle launch` / slash-command plugin), not a second window. Do not treat this as an npm plugin for some other OpenCode install.
 
 ## Phases
 
@@ -28,7 +28,8 @@ Seed snapshot (changeable):
 - Review input is **only** brief + matrix + chapter_diff. Never the raw tender (`samples/tender.md`, a 招标 PDF) or the repo. Ingest parses PDFs locally (`prd-ai-battle ingest file.pdf`); advisors never receive the file.
 - 响应对照表 columns: 条款 / 是否响应 / 证据页码 / 意见 / 状态. Frozen after `/lock`.
 - write_lock is enforced by `python3 -m prd_ai_battle write-check` (source of truth) and `.opencode/plugins/write-lock.js`.
-- During discuss and review, every configured advisor (yaml `advisors[]`, not hardcoded names) runs **in parallel**. Their utterances fold into **one shared timeline** labeled `[agent-id · timestamp]` (`.prd-ai-battle/transcript.jsonl` + `session.json`). Do not spawn OpenCode teammate / sidecar panes. One advisor timeout or HTTP fail must not abort the others (`stream_parallel` isolates errors).
+- During discuss, yaml `primary` + `advisors[]` (not hardcoded names) run a **group chat** on **one shared timeline**: round 0 is a parallel opening on the brief; later rounds give every speaker the FULL `timeline[]` plus brief so they can agree, disagree, or ask each other. Repeat until `/lock`. Advisors stay `tools=[]`. write_lock stays closed. User can interrupt (Esc / 停止); partial utterances stay. Do not spawn OpenCode teammate / sidecar panes. One advisor timeout or HTTP fail must not abort the others (`stream_parallel` isolates errors).
+- During review, every configured advisor runs **in parallel**. Input is **only** brief + matrix + chapter_diff. Findings fold into the same labeled timeline.
 
 ## Drafts
 

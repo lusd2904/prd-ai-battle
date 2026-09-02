@@ -113,11 +113,15 @@ def test_commands_drive_python_state_machine():
     assert "sidecar" in discuss.lower() or "teammate" in discuss.lower()
 
 
-def test_readme_leads_with_opencode_mac_not_textual():
+def test_readme_leads_with_product_board_not_demo():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "brew install anomalyco/tap/opencode" in readme
-    assert readme.find("brew install") < readme.find("prd-ai-battle --offline")
-    assert "Mac only" in readme or "Mac only" in readme.replace("\n", " ")
+    assert "optional Textual demo" not in readme
+    assert "optional textual demo" not in readme.lower()
+    board_at = readme.find("Textual board")
+    assert board_at != -1
+    assert board_at < readme.find("prd-ai-battle launch")
+    assert "--offline" in readme
+    assert "不是演示" in readme or "not a demo" in readme.lower() or "不是演示模式" in readme
     assert "Do not deploy" in readme or "cloud VM" in readme
     assert "gitignored" in readme.lower() or "prd-ai-battle.yaml" in readme
     assert "config set" in readme
@@ -125,6 +129,8 @@ def test_readme_leads_with_opencode_mac_not_textual():
     assert "prd-ai-battle.env.example" in readme
     assert "prd-ai-battle ping" in readme
     assert "prd-ai-battle discuss" in readme
-    assert "shared chat" in readme.lower() or "one shared" in readme.lower()
+    assert "prd-ai-battle export" in readme
+    assert "group chat" in readme.lower() or "交叉讨论" in readme or "group-chat" in readme.lower()
     assert "grok-4.5" in readme
     assert "do not ship a plugin" in readme.lower() or "not an npm" in readme.lower()
+    assert "brew install anomalyco/tap/opencode" in readme

@@ -1,4 +1,4 @@
-"""CLI: launch OpenCode (default) | ingest | offline TUI | phase | write-check | demo."""
+"""CLI: product board (default) | export | ingest | phase | write-check | OpenCode engine."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
     common.add_argument(
         "--offline",
         action="store_true",
-        help="Force mock models / Textual demo (no network).",
+        help="离线：使用模拟模型，不访问网络（产品看板，不是演示）。",
     )
     common.add_argument(
         "--requirement",
@@ -36,15 +36,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="prd-ai-battle",
         description=(
-            "prd-ai-battle — multi-model PRD / bid drafting. "
-            "Default: launch OpenCode in this repo (Mac). "
-            "Use --offline for the optional Textual demo."
+            "prd-ai-battle — 标书撰写看板：一条时间线、阶段轨、写入锁。 "
+            "默认打开产品看板。OpenCode 仅作执行/修订引擎（prd-ai-battle launch）。 "
+            "--offline 为离线模拟，不是演示模式。"
         ),
         parents=[common],
     )
     sub = parser.add_subparsers(dest="command")
-    sub.add_parser("launch", help="Launch OpenCode as this product's TUI (default).", parents=[common])
-    sub.add_parser("tui", help="Optional Textual demo (not the product shell).", parents=[common])
+    sub.add_parser("launch", help="启动 OpenCode 执行/修订引擎（非默认界面）。", parents=[common])
+    sub.add_parser("tui", help="打开产品看板（默认；一条时间线 + 阶段轨）。", parents=[common])
     sub.add_parser("demo", help="Run the offline discuss → lock → write → review pipeline.", parents=[common])
     sub.add_parser("init", help="Write config.example.yaml → ./prd-ai-battle.yaml")
     sub.add_parser("doctor", help="Print resolved provider base_url (keys redacted).", parents=[common])
@@ -55,7 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     discuss = sub.add_parser(
         "discuss",
-        help="Run a shared multi-model discuss round and print one labeled timeline.",
+        help="交叉讨论：首轮并行开场，随后每人读整条时间线再回应。",
         parents=[common],
     )
     discuss.add_argument(
@@ -79,7 +79,19 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="Path to a .pdf (parsed locally with pypdf) or .md tender.",
     )
-    shot = sub.add_parser("screenshot", help="Headless Textual snapshot (SVG).", parents=[common])
+    exp = sub.add_parser(
+        "export",
+        help="导出标书正文、对照表、讨论记录与会话快照（带日期的文件夹）。",
+        parents=[common],
+    )
+    exp.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=None,
+        help="导出父目录（其下创建带日期的文件夹）。默认 workspace/exports/。",
+    )
+    shot = sub.add_parser("screenshot", help="看板截图（SVG）。", parents=[common])
     shot.add_argument("-o", "--output", type=Path, default=Path("prd-ai-battle.screenshot.svg"))
 
     phase = sub.add_parser("phase", help="Drive discuss → locked → execute → review → revise.")
@@ -147,8 +159,8 @@ def _config(args):
         "screenshot",
         None,
     }:
-        # Zero-config Textual first run: mock models so the demo always boots.
-        if getattr(args, "command", None) == "tui":
+        # Zero-config board first run: mock models so the看板 always boots.
+        if getattr(args, "command", None) in {"tui", None}:
             offline = True
     cfg = load_config(path, offline=offline)
     if getattr(args, "workspace", None):
@@ -213,11 +225,25 @@ def cmd_ping(args) -> int:
 
 
 def cmd_tui(args) -> int:
+    from prd_ai_battle.config import default_offline_config, load_config, load_runtime_config
     from prd_ai_battle.tui.app import BattleApp
 
-    cfg = _config(args)
+    workspace = str(args.workspace) if args.workspace else ".prd-ai-battle"
     if args.offline:
+        if args.config:
+            cfg = load_config(args.config, offline=True)
+            cfg.workspace = workspace
+        else:
+            cfg = default_offline_config(workspace)
         cfg.offline = True
+    else:
+        cfg = load_runtime_config(
+            explicit=args.config,
+            offline=None,
+            ensure_local=True,
+        )
+        if args.workspace:
+            cfg.workspace = workspace
     app = BattleApp(cfg, requirement=args.requirement)
     app.run()
     return 0
@@ -329,6 +355,21 @@ def cmd_ingest(args) -> int:
     except (IngestError, IllegalTransition, OSError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}, indent=2, ensure_ascii=False), file=sys.stderr)
         return 2
+    print(dumps(payload))
+    return 0
+
+
+def cmd_export(args) -> int:
+    """Write a dated deliverable folder. Offline; no network."""
+    from prd_ai_battle.export import export_deliverable
+    from prd_ai_battle.phase import dumps, load_session
+
+    session = load_session(
+        workspace=args.workspace,
+        config_path=args.config,
+        offline=True if args.offline else None,
+    )
+    payload = export_deliverable(session, dest_parent=args.output)
     print(dumps(payload))
     return 0
 
@@ -460,14 +501,14 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(cmd_ingest(args))
     if command == "discuss":
         raise SystemExit(cmd_discuss_stream(args))
+    if command == "export":
+        raise SystemExit(cmd_export(args))
     if command == "phase":
         raise SystemExit(cmd_phase(args))
     if command == "write-check":
         raise SystemExit(cmd_write_check(args))
     if command == "record-draft":
         raise SystemExit(cmd_record_draft(args))
-    if command == "launch" or command is None:
-        if getattr(args, "offline", False):
-            raise SystemExit(cmd_tui(args))
+    if command == "launch":
         raise SystemExit(cmd_launch(args))
     raise SystemExit(cmd_tui(args))

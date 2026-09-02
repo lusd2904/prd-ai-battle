@@ -1,8 +1,8 @@
 # prd-ai-battle
 
-This repository **is the product**. [OpenCode](https://opencode.ai) (`sst/opencode`) is the TUI / coding-agent runtime. We do not ship a plugin you install into some other OpenCode project, and we do not grow a from-scratch Textual TUI as the main UX.
+This repository **is the product**. The user-facing skin is the Chinese **Textual board**: one shared labeled timeline, yaml speaker colors, phase rail, and who holds `write_lock` always visible. [OpenCode](https://opencode.ai) stays the execute/revise engine (`prd-ai-battle launch` / slash-command plugin) — not a second window. We do not ship an npm plugin, and we do not grow OpenCode teammate panes.
 
-Mac only. Clone this repo, install OpenCode, save local config, run `prd-ai-battle`. That launches OpenCode **in this workspace** with write_lock bound to **whatever primary id is in your last-saved yaml**.
+Mac. Clone this repo, save local config, run `prd-ai-battle`. That opens the board. `write_lock` binds to **whatever primary id is in your last-saved yaml**.
 
 ```
 discuss → locked → execute (primary writes v1)
@@ -95,17 +95,19 @@ prd-ai-battle config set --primary-key '…' --advisor-id advisor-grok --key '�
 # or: export the api_key_env names from the yaml (seed: PRD_SFP_XIXI_KEY / PRD_SFP_OPENROUTER_KEY)
 
 prd-ai-battle ping                 # HTTP probe; backup 429 is not a hard fail
-prd-ai-battle
+prd-ai-battle                      # 打开产品看板
+prd-ai-battle --offline            # 看板离线（模拟模型，无网络）
 # or: ./scripts/prd-ai-battle
+prd-ai-battle launch               # OpenCode 执行/修订引擎（可选）
 ```
 
-`prd-ai-battle` reads your gitignored yaml, generates the OpenCode overlay, then execs `opencode`. Seed ids are `primary` + `advisor-sonnet` + `advisor-grok` until you change them.
+`prd-ai-battle` opens the board. Seed ids are `primary` + `advisor-sonnet` + `advisor-grok` until you change them. OpenCode is optional and used for `/execute` / `/revise` when you launch the engine.
 
-Then:
+Then (board keys or OpenCode slash commands):
 
 | Command | What happens |
 | --- | --- |
-| `/discuss` | Ingest the sample 招标文件 if needed; yaml `primary` + `advisors[]` discuss the **brief** in **one shared chat** (labeled speakers); no writes |
+| `/discuss` | Ingest the sample 招标文件 if needed; yaml `primary` + `advisors[]` **group-chat** the **brief**: round 0 parallel opening, later rounds read the full timeline and respond; no writes |
 | `/lock` | Freeze the 对照表 → `phase=locked` |
 | `/execute` | `phase=execute` — only the **configured primary id** may write `.prd-ai-battle/drafts/v1/response.md` |
 | `/review` | Advisors review **brief + matrix + chapter_diff** only |
@@ -118,24 +120,26 @@ prd-ai-battle init
 prd-ai-battle doctor        # resolved URLs; keys redacted as "set"/"missing"
 prd-ai-battle ping          # 8-token POST per provider; 429 on backup = quota empty
 prd-ai-battle phase status
-prd-ai-battle discuss --offline   # one labeled timeline, no network
+prd-ai-battle discuss --offline   # 交叉讨论，一条时间线，无网络
+prd-ai-battle export --offline    # 导出标书正文 / 对照表 / 讨论记录
 ```
 
-## Discuss is one shared chat
+## Discuss is a group chat
 
-`/discuss` and `prd-ai-battle discuss` do **not** open OpenCode Agent Teams / sidecar teammate panes. A product-level orchestrator:
+`/discuss` and `prd-ai-battle discuss` do **not** open OpenCode Agent Teams / sidecar teammate panes. Python is the orchestrator:
 
 1. Reads the **current yaml** `primary` + every `advisors[]` entry (add/remove models there; commands never hardcode seed ids).
-2. Fans the discuss prompt out **in parallel** (`tools=[]` for advisors).
-3. Merges streamed replies into **one timeline** — `.prd-ai-battle/transcript.jsonl` and the `timeline` array on `session.json`.
-4. Prints that stream as labeled bubbles: `[agent-id · HH:MM:SS]`.
-
-It looks like several mouths in a single chat. Each speaker sees prior utterances on that shared timeline (follow-up `/discuss` or `prd-ai-battle discuss --prompt …` rounds include them). OpenCode remains the editor/runtime for `/execute` / `/revise`.
+2. **Round 0:** parallel opening on the brief (`tools=[]` for advisors). Speakers do not see each other yet.
+3. **Later rounds:** every speaker is given the **FULL** current `timeline[]` (labeled `[agent-id · timestamp]`) plus the brief, then replies — agree, disagree, or ask each other.
+4. Merges streamed replies into **one timeline** — `.prd-ai-battle/transcript.jsonl` and `session.json`.
+5. Repeat until `/lock`. Esc or `停止` cancels an in-flight round; partial utterances stay; no files are written; `write_lock` stays closed.
 
 ```bash
 prd-ai-battle discuss --offline --workspace .prd-ai-battle
 prd-ai-battle discuss --offline --prompt "Lock 等保 and ★ storage first"
 ```
+
+`--offline` is offline (mock models, no network). It is not a demo mode.
 
 ## Ingest a 招标 PDF (Mac)
 
@@ -155,7 +159,7 @@ prd-ai-battle ingest ~/Downloads/招标文件.pdf --workspace .prd-ai-battle
 prd-ai-battle ingest samples/tender.md --workspace .prd-ai-battle
 
 prd-ai-battle phase status --workspace .prd-ai-battle
-prd-ai-battle                 # then /discuss — models see the brief only
+prd-ai-battle                 # 打开看板 — 模型只看摘要
 ```
 
 Notes:
@@ -165,14 +169,15 @@ Notes:
 - Discuss still shares the brief, not the file. Review is still **brief + matrix + chapter_diff** only.
 - `write_lock` is unchanged: advisors stay `tools=[]`; primary writes only in `execute` / `revise`.
 
-## Optional Textual demo
+## 看板与离线
 
-The old Python TUI is **not** the product shell. It remains as an offline demo:
+产品界面就是看板（`prd-ai-battle` / `prd-ai-battle tui`）。`--offline` 只表示不用网络：
 
 ```bash
 prd-ai-battle --offline
-# or: prd-ai-battle tui --offline
-prd-ai-battle demo --workspace .prd-ai-battle
+prd-ai-battle tui --offline
+prd-ai-battle export --offline --workspace .prd-ai-battle
+prd-ai-battle demo --workspace .prd-ai-battle   # 无界面跑通 discuss→revise
 ```
 
 ## Workspace layout
@@ -190,9 +195,9 @@ prd-ai-battle demo --workspace .prd-ai-battle
   drafts/v2/response.md
 ```
 
-## Library (not the UX)
+## Library
 
-Python stays as the contract engine used by OpenCode commands and the overlay hook:
+Python is the contract engine and the board orchestrator:
 
 ```
 src/prd_ai_battle/
@@ -201,13 +206,14 @@ src/prd_ai_battle/
   write_lock.py    # primary + execute|revise only
   bridge.py        # write-check used by the OpenCode overlay
   phase.py         # slash-command backend
-  launch.py        # exec OpenCode as this product
+  launch.py        # exec OpenCode as execute/revise engine
+  export.py        # dated folder: 标书正文 / 对照表 / transcript / session
   ping.py          # 8-token provider probe (keys redacted)
   ingest.py        # brief extraction (markdown + local PDF)
   store.py         # transcript + session.json
   llm.py           # OpenAI-compatible SSE; advisors get tools: []
-  session.py       # shared-timeline orchestrator (also used by --offline)
-  tui/app.py       # optional Textual demo (one chat pane)
+  session.py       # group-chat discuss + interrupt
+  tui/app.py       # product board (one timeline)
   data/tender.md   # bundled sample
 .opencode/
   opencode.json    # providers, agents, commands (app overlay)
