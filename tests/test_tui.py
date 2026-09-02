@@ -23,7 +23,13 @@ async def test_tui_full_offline_round(tmp_path: Path):
         await pilot.pause()
         app.action_discuss()
         await _wait_idle(app, pilot)
-        assert any(b.model_id == "primary" for b in app.query(Bubble))
+        bubbles = list(app.query(Bubble))
+        assert any(b.model_id == "primary" for b in bubbles)
+        assert any(b.model_id == "advisor-a" for b in bubbles)
+        assert app.query_one("#chat")
+        assert app.query_one("#chat-banner")
+        assert {b.model_id for b in bubbles} >= {"user", "primary", "advisor-a", "advisor-b"}
+        assert all(b.ts for b in bubbles)
         app.action_lock_matrix()
         assert app.session.state.phase is Phase.LOCKED
         assert not app.session.state.allows_write(app.session.state.primary)

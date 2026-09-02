@@ -28,7 +28,7 @@ Seed snapshot (changeable):
 - Review input is **only** brief + matrix + chapter_diff. Never the raw tender (`samples/tender.md`, a 招标 PDF) or the repo. Ingest parses PDFs locally (`prd-ai-battle ingest file.pdf`); advisors never receive the file.
 - 响应对照表 columns: 条款 / 是否响应 / 证据页码 / 意见 / 状态. Frozen after `/lock`.
 - write_lock is enforced by `python3 -m prd_ai_battle write-check` (source of truth) and `.opencode/plugins/write-lock.js`.
-- During discuss and review, invoke every configured advisor **in parallel**. One advisor timeout or HTTP fail must not abort the others (`stream_parallel` isolates errors; OpenCode primary continues if a teammate fails).
+- During discuss and review, every configured advisor (yaml `advisors[]`, not hardcoded names) runs **in parallel**. Their utterances fold into **one shared timeline** labeled `[agent-id · timestamp]` (`.prd-ai-battle/transcript.jsonl` + `session.json`). Do not spawn OpenCode teammate / sidecar panes. One advisor timeout or HTTP fail must not abort the others (`stream_parallel` isolates errors).
 
 ## Drafts
 

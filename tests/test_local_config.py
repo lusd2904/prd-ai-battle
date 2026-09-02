@@ -64,7 +64,10 @@ def test_generated_opencode_overlay_follows_yaml_not_seed_opus(tmp_path: Path):
     assert overlay["agent"]["lead"]["model"].endswith("not-opus")
     assert "claude-opus-5" not in overlay["agent"]["lead"]["model"]
     assert overlay["agent"]["advisor-grok"]["model"].endswith("not-grok")
-    assert overlay["agent"]["lead"]["permission"]["task"]["advisor-grok"] == "allow"
+    assert overlay["agent"]["lead"]["permission"]["task"] == "deny"
+    assert overlay["agents"]["lead"]["permissions"] == [
+        {"action": "subagent", "resource": "*", "effect": "deny"}
+    ]
     assert overlay["agent"]["primary"]["disable"] is True
     gw = overlay["provider"][GATEWAY_PROVIDER_ID]
     assert set(gw["models"]) >= set(GATEWAY_BACKUP_MODELS)

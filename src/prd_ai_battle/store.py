@@ -55,9 +55,25 @@ class WorkspaceStore:
             return None
         return ComplianceMatrix.model_validate_json(self.matrix_path.read_text(encoding="utf-8"))
 
-    def append_message(self, message: ChatMessage) -> None:
+    def append_message(self, message: ChatMessage, state: SessionState | None = None) -> None:
         with self.transcript_path.open("a", encoding="utf-8") as fh:
             fh.write(message.model_dump_json() + "\n")
+        if state is not None:
+            state.timeline.append(message)
+            self.save_state(state)
+
+    def sync_timeline(self, state: SessionState) -> list[ChatMessage]:
+        """One ordered transcript. Prefer jsonl; keep session.json in lockstep."""
+        messages = self.load_transcript()
+        if messages:
+            state.timeline = list(messages)
+        elif state.timeline:
+            self.transcript_path.write_text(
+                "".join(m.model_dump_json() + "\n" for m in state.timeline),
+                encoding="utf-8",
+            )
+            messages = list(state.timeline)
+        return messages
 
     def load_transcript(self) -> list[ChatMessage]:
         if not self.transcript_path.exists():

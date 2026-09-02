@@ -1,4 +1,4 @@
-"""Split-pane TUI: brief/matrix/state on the left, parallel model streams on the right."""
+"""Split-pane TUI: brief/matrix/state on the left, one shared labeled discuss chat on the right."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from textual.widgets import DataTable, Footer, Header, Input, Markdown, Static, 
 
 from prd_ai_battle.config import AppConfig
 from prd_ai_battle.llm import StreamDelta
-from prd_ai_battle.models import Phase, iso_now
+from prd_ai_battle.models import Phase, iso_now, speaker_label
 from prd_ai_battle.session import Session
 from prd_ai_battle.state import IllegalTransition
 from prd_ai_battle.write_lock import WriteDenied
@@ -41,8 +41,7 @@ class Bubble(Static):
 
     def append(self, text: str) -> None:
         self.body += text
-        clock = self.ts[11:19] if len(self.ts) >= 19 else self.ts
-        self.update(f"[b]{self.model_id} · {clock}[/b]\n{self.body}")
+        self.update(f"[b]{speaker_label(self.model_id, self.ts)}[/b]\n{self.body}")
 
 
 class BattleApp(App[None]):
@@ -90,6 +89,7 @@ class BattleApp(App[None]):
                     with TabPane("State", id="tab-state"):
                         yield VerticalScroll(Markdown("", id="state"))
             with Vertical(id="right"):
+                yield Static("Shared discuss — one chat, labeled speakers", id="chat-banner")
                 yield VerticalScroll(id="chat")
         yield Input(placeholder="Optional discuss prompt — Enter to run a discuss round", id="composer")
         yield Footer()
@@ -105,7 +105,15 @@ class BattleApp(App[None]):
                 "Press **L** to load the bundled 招标文件 sample, or pass `--requirement PATH`."
             )
         self.query_one("#composer", Input).can_focus = True
+        self._replay_timeline()
         self.set_focus(table)
+
+    def _replay_timeline(self) -> None:
+        chat = self.query_one("#chat", VerticalScroll)
+        for msg in self.session.load_timeline():
+            bubble = Bubble(msg.model_id, ts=msg.ts)
+            bubble.append(msg.content)
+            chat.mount(bubble)
 
     def _phase_rail(self) -> str:
         current = self.session.state.phase
@@ -234,7 +242,7 @@ class BattleApp(App[None]):
         if not self.session.brief:
             self.notify("Load a requirement first (L)", severity="warning")
             return
-        self._user_note(prompt or "Discuss — all models, tools=[], no filesystem writes.")
+        self._user_note(prompt or "Discuss — one shared timeline, yaml speakers, tools=[], no writes.")
         self._run_stream(self.session.discuss(prompt))
 
     def action_lock_matrix(self) -> None:

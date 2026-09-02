@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from typing import Any
@@ -41,7 +42,32 @@ def contract_payload(session: Session) -> dict[str, Any]:
     view["writes_allowed_primary"] = session.state.allows_write(session.state.primary)
     view["advisor_tools"] = {aid: [] for aid in session.state.advisors}
     view["primary_tools"] = session.state.tools_for(session.state.primary)
+    view["speakers"] = session.speakers()
+    view["ux"] = "shared_timeline"
+    view["teammate_sessions"] = []
     return view
+
+
+def _timeline_payload(session: Session) -> list[dict[str, Any]]:
+    return [
+        {
+            "model_id": m.model_id,
+            "role": m.role,
+            "phase": m.phase.value,
+            "ts": m.ts,
+            "label": m.label(),
+            "content": m.content,
+        }
+        for m in session.load_timeline()
+    ]
+
+
+def _run_stream(agen) -> None:
+    async def _consume() -> None:
+        async for _event in agen:
+            pass
+
+    asyncio.run(_consume())
 
 
 def cmd_status(session: Session) -> dict[str, Any]:
@@ -64,20 +90,36 @@ def cmd_ingest(session: Session, requirement: Path | None = None) -> dict[str, A
     return payload
 
 
-def cmd_discuss(session: Session, requirement: Path | None = None) -> dict[str, Any]:
+def cmd_discuss(
+    session: Session,
+    requirement: Path | None = None,
+    *,
+    prompt: str | None = None,
+    run: bool = True,
+) -> dict[str, Any]:
     if session.state.brief is None:
         cmd_ingest(session, requirement)
     else:
         session.enter_discuss()
         session.persist()
+    if run:
+        if hasattr(session.client, "delay_s"):
+            session.client.delay_s = 0.0  # type: ignore[attr-defined]
+        _run_stream(session.discuss(prompt))
     payload = contract_payload(session)
     payload["brief_markdown"] = session.state.brief.as_prompt_block() if session.state.brief else ""
     payload["matrix_markdown"] = session.state.matrix.as_prompt_table()
+    payload["timeline"] = _timeline_payload(session)
+    payload["transcript"] = session.render_timeline()
     payload["instruction"] = (
-        "Phase=discuss. Fan out to every configured advisor IN PARALLEL. "
-        "If one advisor times out or fails, continue with the others — do not "
-        "abort discuss. Nobody writes files. Advisors have tools=[]. Discuss "
-        "the brief only — never dump the raw tender or the repo."
+        "Phase=discuss. The `transcript` / `timeline` fields are ONE shared chat: "
+        "yaml primary + advisors[] spoke in parallel and their utterances were folded "
+        "into this session as a single ordered list labeled [agent-id · timestamp]. "
+        "Do NOT spawn OpenCode teammates, subagents, or sidecar panes. "
+        "Do not assume seed names (advisor-sonnet / advisor-grok) — speakers are "
+        "whatever the current yaml lists. Advisors have tools=[]. "
+        "If one speaker times out or errors, the others continue (do not abort discuss). "
+        "Discuss the brief only — never dump the raw tender or the repo."
     )
     return payload
 
@@ -124,14 +166,21 @@ def cmd_review(session: Session) -> dict[str, Any]:
         session.persist()
     packet_path = session.write_review_packet()
     packet = session.build_review_packet()
+    if hasattr(session.client, "delay_s"):
+        session.client.delay_s = 0.0  # type: ignore[attr-defined]
+    _run_stream(session.review())
     payload = contract_payload(session)
     payload["review_packet_path"] = str(packet_path)
     payload["review_packet"] = packet.as_prompt()
+    payload["timeline"] = _timeline_payload(session)
+    payload["transcript"] = session.render_timeline()
     payload["instruction"] = (
-        "Phase=review. Launch every configured advisor IN PARALLEL. "
-        "Their ONLY input is the review packet below (brief + matrix + chapter_diff). "
+        "Phase=review. Advisors already ran in parallel; their findings are on the "
+        "same shared timeline (`transcript`). Do NOT spawn OpenCode teammates. "
+        "Their ONLY input was the review packet (brief + matrix + chapter_diff). "
         "Do not attach the repo, the raw tender, or any other files. "
-        "Advisors must not edit files or run shell."
+        "Speakers are the current yaml advisors[] — do not hardcode seed names. "
+        "Advisors must not edit files or run shell. If one times out, continue."
     )
     return payload
 
@@ -172,7 +221,9 @@ def cmd_write_check(
 PHASE_COMMANDS = {
     "status": lambda session, **_: cmd_status(session),
     "ingest": lambda session, requirement=None, **_: cmd_ingest(session, requirement),
-    "discuss": lambda session, requirement=None, **_: cmd_discuss(session, requirement),
+    "discuss": lambda session, requirement=None, prompt=None, **_: cmd_discuss(
+        session, requirement, prompt=prompt
+    ),
     "lock": lambda session, **_: cmd_lock(session),
     "execute": lambda session, **_: cmd_execute(session),
     "review": lambda session, **_: cmd_review(session),
