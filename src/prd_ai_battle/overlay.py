@@ -111,20 +111,12 @@ def generate_opencode_config(cfg: AppConfig) -> dict:
         else:
             providers[pid] = entry
 
-    advisor_ids = [a.id for a in cfg.advisors]
-    task_allow = {aid: "allow" for aid in advisor_ids}
-    v2_subagent = [
-        {"action": "subagent", "resource": "*", "effect": "deny"},
-        *[
-            {"action": "subagent", "resource": aid, "effect": "allow"}
-            for aid in advisor_ids
-        ],
-    ]
-
     primary_ref = model_ref(cfg.primary, gateway_url)
     agent: dict[str, dict] = {}
     agents: dict[str, dict] = {}
 
+    # Discuss/review UX is a Python-orchestrated shared timeline. Do not allow
+    # OpenCode Agent Teams / sidecar teammate panes.
     agent[cfg.primary.id] = {
         "description": "Lead drafter. Writes files only in execute/revise (write_lock).",
         "mode": "primary",
@@ -133,7 +125,7 @@ def generate_opencode_config(cfg: AppConfig) -> dict:
         "permission": {
             "edit": "allow",
             "bash": "allow",
-            "task": task_allow,
+            "task": "deny",
         },
     }
     agents[cfg.primary.id] = {
@@ -141,7 +133,9 @@ def generate_opencode_config(cfg: AppConfig) -> dict:
         "mode": "primary",
         "model": primary_ref,
         "system": f"You are {cfg.primary.id}, the primary / lead of prd-ai-battle. See AGENTS.md.",
-        "permissions": v2_subagent,
+        "permissions": [
+            {"action": "subagent", "resource": "*", "effect": "deny"},
+        ],
     }
 
     for advisor in cfg.advisors:
@@ -173,7 +167,7 @@ def generate_opencode_config(cfg: AppConfig) -> dict:
 
     commands = {}
     for name, description in (
-        ("discuss", "Parallel multi-model discussion (tools=[], no writes)"),
+        ("discuss", "Shared multi-model discuss chat (one labeled timeline, no teammate panes)"),
         ("lock", "Lock the 响应对照表 → phase=locked"),
         ("execute", "Primary writes v1 (write_lock opens for current primary id only)"),
         ("review", "Advisors review brief + matrix + chapter_diff only"),

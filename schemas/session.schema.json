@@ -51,6 +51,22 @@
     "write_lock": {
       "type": "boolean",
       "description": "When true, filesystem artifact writes only if phase is execute|revise AND actor is primary"
+    },
+    "timeline": {
+      "type": "array",
+      "description": "Single shared discuss/review chat. Each item is a labeled utterance (model_id + ts). Not per-advisor teammate sessions.",
+      "items": {
+        "type": "object",
+        "required": ["model_id", "phase", "content"],
+        "properties": {
+          "ts": { "type": "string" },
+          "model_id": { "type": "string", "description": "yaml agent id or 'user'" },
+          "role": { "type": "string" },
+          "phase": { "type": "string" },
+          "content": { "type": "string" },
+          "done": { "type": "boolean" }
+        }
+      }
     }
   }
 }

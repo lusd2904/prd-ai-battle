@@ -98,11 +98,19 @@ def test_advisor_markdown_denies_edit_and_does_not_pin_a_model():
 
 
 def test_commands_drive_python_state_machine():
-    for name in ("discuss", "lock", "execute", "review", "revise"):
+    for name in ("lock", "execute", "review", "revise"):
         text = (ROOT / ".opencode" / "commands" / f"{name}.md").read_text(encoding="utf-8")
         assert f"phase {name}" in text or f"prd_ai_battle phase {name}" in text
     discuss = (ROOT / ".opencode" / "commands" / "discuss.md").read_text(encoding="utf-8")
+    assert "prd_ai_battle discuss" in discuss
     assert "do not abort discuss" in discuss.lower()
+    assert "shared" in discuss.lower() and "timeline" in discuss.lower()
+    for banned in ("advisor-sonnet", "advisor-grok", "subagents/teammates", "Agent Teams shape"):
+        assert banned not in discuss
+    review = (ROOT / ".opencode" / "commands" / "review.md").read_text(encoding="utf-8")
+    assert "advisor-sonnet" not in review
+    assert "advisor-grok" not in review
+    assert "sidecar" in discuss.lower() or "teammate" in discuss.lower()
 
 
 def test_readme_leads_with_opencode_mac_not_textual():
@@ -116,5 +124,7 @@ def test_readme_leads_with_opencode_mac_not_textual():
     assert "prd-ai-battle.env" in readme
     assert "prd-ai-battle.env.example" in readme
     assert "prd-ai-battle ping" in readme
+    assert "prd-ai-battle discuss" in readme
+    assert "shared chat" in readme.lower() or "one shared" in readme.lower()
     assert "grok-4.5" in readme
     assert "do not ship a plugin" in readme.lower() or "not an npm" in readme.lower()

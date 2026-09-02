@@ -53,6 +53,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="POST an 8-token chat/completions probe to each configured provider (keys redacted).",
         parents=[common],
     )
+    discuss = sub.add_parser(
+        "discuss",
+        help="Run a shared multi-model discuss round and print one labeled timeline.",
+        parents=[common],
+    )
+    discuss.add_argument(
+        "--prompt",
+        default="",
+        help="Optional user turn. Models see prior labeled utterances in the same chat.",
+    )
+    discuss.add_argument(
+        "--json",
+        action="store_true",
+        dest="as_json",
+        help="Print the phase payload JSON instead of the live labeled stream.",
+    )
     ingest = sub.add_parser(
         "ingest",
         help="Extract brief + 对照表 seed from a 招标 PDF or markdown (local parse).",
@@ -79,6 +95,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--packet",
         action="store_true",
         help="With review: print only the review packet (brief+matrix+chapter_diff).",
+    )
+    phase.add_argument(
+        "--prompt",
+        default="",
+        help="With discuss: optional user turn on the shared timeline.",
     )
 
     check = sub.add_parser("write-check", help="Ask the write_lock whether a tool call is allowed.")
@@ -312,6 +333,32 @@ def cmd_ingest(args) -> int:
     return 0
 
 
+def cmd_discuss_stream(args) -> int:
+    """Product discuss UX: one shared labeled timeline, no teammate sessions."""
+    from prd_ai_battle.phase import cmd_discuss, dumps, load_session
+    from prd_ai_battle.state import IllegalTransition
+
+    session = load_session(
+        workspace=args.workspace,
+        config_path=args.config,
+        offline=True if args.offline else None,
+    )
+    try:
+        payload = cmd_discuss(session, args.requirement, prompt=args.prompt or None)
+    except (IllegalTransition, Exception) as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}, indent=2, ensure_ascii=False), file=sys.stderr)
+        return 2
+    if args.as_json:
+        print(dumps(payload))
+        return 0
+    speakers = ", ".join(payload.get("speakers") or session.speakers())
+    print(f"# Shared discuss  (speakers: {speakers})")
+    print("# One timeline — not OpenCode teammate panes")
+    print()
+    print(payload.get("transcript") or session.render_timeline(), end="")
+    return 0
+
+
 def cmd_phase(args) -> int:
     from prd_ai_battle.phase import dumps, load_session
     from prd_ai_battle.phase import (
@@ -336,7 +383,7 @@ def cmd_phase(args) -> int:
         elif args.action == "ingest":
             payload = cmd_ingest(session, args.requirement)
         elif args.action == "discuss":
-            payload = cmd_discuss(session, args.requirement)
+            payload = cmd_discuss(session, args.requirement, prompt=args.prompt or None)
         elif args.action == "lock":
             payload = cmd_lock(session)
         elif args.action == "execute":
@@ -411,6 +458,8 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(cmd_tui(args))
     if command == "ingest":
         raise SystemExit(cmd_ingest(args))
+    if command == "discuss":
+        raise SystemExit(cmd_discuss_stream(args))
     if command == "phase":
         raise SystemExit(cmd_phase(args))
     if command == "write-check":

@@ -24,6 +24,12 @@ def test_phase_happy_path(tmp_path: Path):
     discuss = cmd_discuss(session)
     assert discuss["phase"] == Phase.DISCUSS.value
     assert "do not abort discuss" in discuss["instruction"].lower()
+    assert discuss["ux"] == "shared_timeline"
+    assert discuss["teammate_sessions"] == []
+    assert discuss["speakers"] == session.speakers()
+    assert discuss["timeline"]
+    assert any(item["model_id"] == "primary" for item in discuss["timeline"])
+    assert "[" in discuss["transcript"] and " · " in discuss["transcript"]
     assert discuss["brief_markdown"]
     assert "目录" in discuss["brief_markdown"] or "Brief" in discuss["brief_markdown"]
     locked = cmd_lock(session)
@@ -101,3 +107,5 @@ def test_cli_phase_status(tmp_path: Path, capsys):
     out = capsys.readouterr().out
     assert '"phase": "discuss"' in out
     assert '"write_lock": true' in out
+    assert '"ux": "shared_timeline"' in out
+    assert '"teammate_sessions": []' in out

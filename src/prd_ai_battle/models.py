@@ -159,8 +159,37 @@ class ChatMessage(BaseModel):
     done: bool = True
 
     def label(self) -> str:
-        clock = self.ts[11:19] if len(self.ts) >= 19 else self.ts
-        return f"{self.model_id} · {clock}"
+        return speaker_label(self.model_id, self.ts)
+
+    def as_bubble(self) -> str:
+        return f"[{self.label()}]\n{self.content}".rstrip()
+
+
+def speaker_label(model_id: str, ts: str | None = None) -> str:
+    """Product bubble header: agent id + timestamp. Ids come from yaml, not seed names."""
+    stamp = ts or iso_now()
+    clock = stamp[11:19] if len(stamp) >= 19 else stamp
+    return f"{model_id} · {clock}"
+
+
+def render_timeline(messages: list[ChatMessage]) -> str:
+    """One shared chat: an ordered list of labeled utterances. No teammate sessions."""
+    if not messages:
+        return ""
+    return "\n\n".join(m.as_bubble() for m in messages) + "\n"
+
+
+def timeline_prompt_block(messages: list[ChatMessage]) -> str:
+    """Prior utterances other speakers already put on the shared timeline."""
+    body = render_timeline(messages).strip()
+    if not body:
+        return ""
+    return (
+        "## Shared discuss timeline\n"
+        "This is one chat. Each bubble is labeled `[agent-id · timestamp]`. "
+        "Reply in this same thread. Do not open a side conversation.\n\n"
+        f"{body}\n"
+    )
 
 
 class DraftVersion(BaseModel):
@@ -226,6 +255,7 @@ class SessionState(BaseModel):
     created_at: str = Field(default_factory=iso_now)
     updated_at: str = Field(default_factory=iso_now)
     draft_versions: list[DraftVersion] = Field(default_factory=list)
+    timeline: list[ChatMessage] = Field(default_factory=list)
     extra: dict[str, Any] = Field(default_factory=dict)
 
     def bump(self) -> None:

@@ -19,6 +19,8 @@ from prd_ai_battle.models import (
     ReviewPacket,
     SessionState,
     iso_now,
+    render_timeline,
+    timeline_prompt_block,
 )
 from prd_ai_battle.state import IllegalTransition, StateMachine
 from prd_ai_battle.store import WorkspaceStore
@@ -42,6 +44,7 @@ class Session:
         self.state.advisors = [a.id for a in config.advisors]
         if not self.store.meta_path.exists():
             self.store.save_state(self.state)
+        self.store.sync_timeline(self.state)
         self._bind()
         self.client: ChatClient = MockChatClient() if config.offline else ChatClient()
         self.requirement: str = ""
@@ -104,19 +107,47 @@ class Session:
         self.state.matrix.cycle_status(clause_id)
         self.persist()
 
+    def speakers(self) -> list[str]:
+        """Current yaml primary + advisors[] — never a hardcoded seed pair."""
+        return self.config.model_ids()
+
     def _client_messages(self, extra_user: str) -> list[dict[str, str]]:
         if self.state.brief is None:
             raise IllegalTransition("No brief loaded")
         system = (
-            "You are one advisor in a shared multi-model discussion. "
+            "You are the primary drafter. "
             "You receive the extracted brief only — never a full repository dump. "
-            f"Your id is shown to the user. Phase={self.state.phase.value}."
+            f"Your id is {self.config.primary.id}. Phase={self.state.phase.value}."
         )
         return [
             {"role": "system", "content": system},
             {"role": "user", "content": self.state.brief.as_prompt_block()},
             {"role": "user", "content": extra_user},
         ]
+
+    def _discuss_messages(self, model_id: str, extra_user: str) -> list[dict[str, str]]:
+        if self.state.brief is None:
+            raise IllegalTransition("No brief loaded")
+        speakers = ", ".join(self.speakers())
+        system = (
+            "You are one speaker in a SINGLE shared discuss chat "
+            "(one timeline, not a sidecar teammate pane). "
+            f"Your speaker id is {model_id}. Other speakers: {speakers}. "
+            "You receive the extracted brief only — never a full repository dump. "
+            "Prior utterances from every mouth appear below, labeled [agent-id · timestamp]. "
+            f"Phase={self.state.phase.value}."
+        )
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": self.state.brief.as_prompt_block()},
+            {"role": "user", "content": self.state.matrix.as_prompt_table()},
+        ]
+        prior = [m for m in self.store.load_transcript() if m.phase is Phase.DISCUSS]
+        block = timeline_prompt_block(prior)
+        if block:
+            messages.append({"role": "user", "content": block})
+        messages.append({"role": "user", "content": extra_user})
+        return messages
 
     def _review_messages(self, packet: ReviewPacket) -> list[dict[str, str]]:
         return [
@@ -183,8 +214,29 @@ class Session:
             "废标风险, and what should go into the 响应对照表. Do not write files."
         )
         self._persist_user(prompt, Phase.DISCUSS)
-        async for event in self._fanout(self._client_messages(prompt), Phase.DISCUSS):
+        models = self.config.all_models()
+        messages_for = {m.id: self._discuss_messages(m.id, prompt) for m in models}
+        tools_for = self._tools_map([m.id for m in models])
+        async for event in self._run_models(models, messages_for, tools_for, Phase.DISCUSS):
             yield event
+
+    async def print_unified_stream(self, user_prompt: str | None = None, *, sink=None) -> None:
+        """Fan out discuss and print one labeled timeline as each speaker finishes."""
+        import sys
+
+        out = sink if sink is not None else sys.stdout
+        speakers = ", ".join(self.speakers())
+        out.write(f"# Shared discuss  (speakers: {speakers})\n")
+        out.write("# One timeline — not OpenCode teammate panes\n")
+        out.flush()
+        async for event in self.discuss(user_prompt):
+            if not event.done:
+                continue
+            for msg in reversed(self.load_timeline()):
+                if msg.model_id == event.model_id and msg.role == "assistant":
+                    out.write("\n" + msg.as_bubble() + "\n")
+                    out.flush()
+                    break
 
     def begin_execute(self) -> None:
         self.machine.enter_execute()
@@ -272,6 +324,12 @@ class Session:
         async for event in self._run_models(models, messages_for, tools_for, phase):
             yield event
 
+    def load_timeline(self) -> list[ChatMessage]:
+        return self.store.sync_timeline(self.state)
+
+    def render_timeline(self) -> str:
+        return render_timeline(self.load_timeline())
+
     async def _run_models(
         self,
         models,
@@ -292,14 +350,17 @@ class Session:
 
     def _persist_user(self, content: str, phase: Phase) -> None:
         msg = ChatMessage(model_id="user", role="user", phase=phase, content=content)
-        self.store.append_message(msg)
+        self._commit_message(msg)
 
     def _persist_assistant(self, model_id: str, content: str, phase: Phase) -> None:
         if not content.strip():
             return
-        self.store.append_message(
+        self._commit_message(
             ChatMessage(model_id=model_id, role="assistant", phase=phase, content=content, ts=iso_now())
         )
+
+    def _commit_message(self, msg: ChatMessage) -> None:
+        self.store.append_message(msg, self.state)
 
     def advisor_try_write(self, advisor_id: str, content: str) -> None:
         """Used by tests to prove advisors cannot write."""

@@ -105,7 +105,7 @@ Then:
 
 | Command | What happens |
 | --- | --- |
-| `/discuss` | Ingest the sample 招标文件 if needed; all three models discuss the **brief** in parallel; no writes |
+| `/discuss` | Ingest the sample 招标文件 if needed; yaml `primary` + `advisors[]` discuss the **brief** in **one shared chat** (labeled speakers); no writes |
 | `/lock` | Freeze the 对照表 → `phase=locked` |
 | `/execute` | `phase=execute` — only the **configured primary id** may write `.prd-ai-battle/drafts/v1/response.md` |
 | `/review` | Advisors review **brief + matrix + chapter_diff** only |
@@ -118,6 +118,23 @@ prd-ai-battle init
 prd-ai-battle doctor        # resolved URLs; keys redacted as "set"/"missing"
 prd-ai-battle ping          # 8-token POST per provider; 429 on backup = quota empty
 prd-ai-battle phase status
+prd-ai-battle discuss --offline   # one labeled timeline, no network
+```
+
+## Discuss is one shared chat
+
+`/discuss` and `prd-ai-battle discuss` do **not** open OpenCode Agent Teams / sidecar teammate panes. A product-level orchestrator:
+
+1. Reads the **current yaml** `primary` + every `advisors[]` entry (add/remove models there; commands never hardcode seed ids).
+2. Fans the discuss prompt out **in parallel** (`tools=[]` for advisors).
+3. Merges streamed replies into **one timeline** — `.prd-ai-battle/transcript.jsonl` and the `timeline` array on `session.json`.
+4. Prints that stream as labeled bubbles: `[agent-id · HH:MM:SS]`.
+
+It looks like several mouths in a single chat. Each speaker sees prior utterances on that shared timeline (follow-up `/discuss` or `prd-ai-battle discuss --prompt …` rounds include them). OpenCode remains the editor/runtime for `/execute` / `/revise`.
+
+```bash
+prd-ai-battle discuss --offline --workspace .prd-ai-battle
+prd-ai-battle discuss --offline --prompt "Lock 等保 and ★ storage first"
 ```
 
 ## Ingest a 招标 PDF (Mac)
@@ -167,8 +184,8 @@ prd-ai-battle demo --workspace .prd-ai-battle
   brief.md
   matrix.json
   review-packet.md      # the only advisor input in review
-  transcript.jsonl
-  session.json          # SessionState contract
+  transcript.jsonl      # one shared chat (labeled speakers)
+  session.json          # SessionState contract + timeline[]
   drafts/v1/response.md
   drafts/v2/response.md
 ```
@@ -189,8 +206,8 @@ src/prd_ai_battle/
   ingest.py        # brief extraction (markdown + local PDF)
   store.py         # transcript + session.json
   llm.py           # OpenAI-compatible SSE; advisors get tools: []
-  session.py       # orchestration (also used by --offline)
-  tui/app.py       # optional Textual demo
+  session.py       # shared-timeline orchestrator (also used by --offline)
+  tui/app.py       # optional Textual demo (one chat pane)
   data/tender.md   # bundled sample
 .opencode/
   opencode.json    # providers, agents, commands (app overlay)

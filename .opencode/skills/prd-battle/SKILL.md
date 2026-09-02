@@ -14,6 +14,8 @@ This repo **is** the product. OpenCode is the TUI/agent runtime launched as our 
 
 ## Team
 
+Live ids come from gitignored `prd-ai-battle.yaml` (`primary` + `advisors[]`). Seed snapshot only:
+
 | Agent | Model | Writes |
 | --- | --- | --- |
 | `primary` | `claude-opus-5` via xixiapi.io | Only in `execute` / `revise` |
@@ -24,10 +26,10 @@ Keys: `PRD_SFP_XIXI_KEY`, `PRD_SFP_OPENROUTER_KEY` (names in `prd-ai-battle.env.
 
 ## Commands
 
-- `/discuss` — ingest sample tender if needed, fan-out parallel discussion, no writes
+- `/discuss` — one shared chat: yaml primary + every `advisors[]` speak in parallel; utterances fold into one labeled timeline (no sidecar teammate panes)
 - `/lock` — freeze 响应对照表 (条款 / 是否响应 / 证据页码 / 意见 / 状态)
-- `/execute` — primary writes `.prd-ai-battle/drafts/v1/response.md`
-- `/review` — advisors get **only** brief + matrix + chapter_diff
+- `/execute` — current yaml primary writes `.prd-ai-battle/drafts/v1/response.md`
+- `/review` — advisors get **only** brief + matrix + chapter_diff (same shared timeline)
 - `/revise` — primary writes the next version
 
 ## Enforcement
