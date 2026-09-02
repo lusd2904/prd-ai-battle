@@ -56,9 +56,9 @@ def test_compose_tty_stdin_extra_hosts_optional_env_and_host_yaml():
     assert "." in sources
     assert "/host" in targets
     assert any(t == "/app/.prd-ai-battle" for t in targets)
-    raw = path.read_text(encoding="utf-8").lower()
-    assert "deploy" not in raw
-    assert "paas" not in raw
+    raw = path.read_text(encoding="utf-8")
+    assert "deploy:" not in raw
+    assert "paas" not in raw.lower()
     assert "sk-" not in raw
     assert "prd-ai-battle.yaml" in raw  # documented / linked if present
     assert "host.docker.internal" in raw

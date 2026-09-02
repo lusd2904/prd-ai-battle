@@ -14,9 +14,9 @@
 #   PRD_AI_GATEWAY_URL=http://host.docker.internal:8000/v1
 # Seed yaml still defaults to http://127.0.0.1:8000/v1 on the Mac host.
 #
-# Secrets: gitignored prd-ai-battle.env / yaml on the host. Never in git,
-# never baked into the image. env_file is optional (required: false).
-# Host yaml is linked if present (see /host bind + docker-entrypoint.sh).
+# Secrets: gitignored prd-ai-battle.env / prd-ai-battle.yaml on the host.
+# Never in git, never baked into the image. env_file is optional (required: false).
+# Host prd-ai-battle.yaml is linked if present (/host bind + docker-entrypoint.sh).
 #
 # Offline discuss is explicit, not the default CMD:
 #   docker compose run --rm prd-ai-battle discuss --offline
