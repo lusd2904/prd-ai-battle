@@ -32,17 +32,27 @@ primary:
   api_key_env: PRD_SFP_XIXI_KEY
   temperature: 0.3
 
-# Default advisors: working xixi sonnet + a verified OpenRouter :free model.
-# x-ai/grok-4.6 is NOT on the seed team (OpenRouter 402 / no credits).
+# Default advisors: verified OpenRouter :free slugs on the user's key.
+# x-ai/grok-4.6 and meta/muse-spark-1.2 are NOT on the seed team (paid / 402).
 # Advisors always tools=[]. Ping/402/quota skips that speaker; others continue.
 advisors:
-  - id: advisor-sonnet
-    model: claude-sonnet-5
-    base_url: https://xixiapi.io/v1
-    api_key_env: PRD_SFP_XIXI_KEY
+  - id: advisor-lightning
+    model: nvidia/nemotron-3.5-lightning:free
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: PRD_SFP_OPENROUTER_KEY
     temperature: 0.5
-  - id: advisor-glm
-    model: z-ai/glm-5.2:free
+  - id: advisor-ling
+    model: inclusionai/ling-3.0-flash-fin:free
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: PRD_SFP_OPENROUTER_KEY
+    temperature: 0.5
+  - id: advisor-ultra
+    model: nvidia/nemotron-3-ultra-550b-a55b:free
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: PRD_SFP_OPENROUTER_KEY
+    temperature: 0.5
+  - id: advisor-router
+    model: openrouter/free
     base_url: https://openrouter.ai/api/v1
     api_key_env: PRD_SFP_OPENROUTER_KEY
     temperature: 0.5
@@ -51,8 +61,8 @@ advisors:
 #
 # 1) OpenRouter — official ids from /api/v1/models. Muse Spark 1.2 is
 #    meta/muse-spark-1.2 (paid, no :free slug). Verified :free examples:
-#    z-ai/glm-5.2:free, minimax/minimax-m3:free, nvidia/nemotron-3.5-lightning:free,
-#    inclusionai/ling-3.0-flash-fin:free, google/gemma-4-31b-it:free.
+#    nvidia/nemotron-3.5-lightning:free, inclusionai/ling-3.0-flash-fin:free,
+#    nvidia/nemotron-3-ultra-550b-a55b:free, openrouter/free.
 #    Optional paid (not seed): meta/muse-spark-1.2, x-ai/grok-4.6.
 #
 # 2) OpenCode Zen Free — provider id `opencode` (sst/opencode), NOT OpenRouter.

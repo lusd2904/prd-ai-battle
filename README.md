@@ -12,7 +12,7 @@ discuss → locked → execute (primary writes v1)
 
 ## Seed vs local config (you can change everything)
 
-`config.example.yaml` and committed `opencode.json` are **seed/defaults only** (a finance-platform snapshot: `claude-opus-5`, `claude-sonnet-5`, OpenRouter `:free` `z-ai/glm-5.2:free`, xixi / OpenRouter / OpenCode Zen URLs). They are not locked into the runtime. `x-ai/grok-4.6` is optional, not on the seed team.
+`config.example.yaml` and committed `opencode.json` are **seed/defaults only** (xixi `claude-opus-5` primary + verified OpenRouter `:free` advisors). They are not locked into the runtime. `x-ai/grok-4.6` and `meta/muse-spark-1.2` are optional/paid, not on the seed team.
 
 | File | Git | Role |
 | --- | --- | --- |
@@ -27,7 +27,7 @@ prd-ai-battle init                 # copy seed → gitignored prd-ai-battle.yaml
 prd-ai-battle config show          # last saved; keys redacted
 prd-ai-battle config set --primary-model my-opus --primary-base-url http://127.0.0.1:8000/v1
 prd-ai-battle config set --primary-key-env MY_KEY --primary-key '…'
-prd-ai-battle config set --advisor-id advisor-glm --model minimax/minimax-m3:free --base-url https://openrouter.ai/api/v1
+prd-ai-battle config set --advisor-id advisor-lightning --model nvidia/nemotron-3.5-lightning:free --base-url https://openrouter.ai/api/v1
 prd-ai-battle config set --add-advisor --advisor-id advisor-mimo --model mimo-v2.5-free \
   --base-url https://opencode.ai/zen/v1 --key-env PRD_OPENCODE_ZEN_KEY
 prd-ai-battle doctor               # resolved URLs; keys are "set"/"missing"
@@ -48,7 +48,7 @@ Edit `prd-ai-battle.yaml` directly if you prefer, then relaunch. Launch always:
 
 ## Optional Mac speakers (HTTP and local CLI)
 
-Seed team stays xixi Opus / Sonnet + an OpenRouter `:free` advisor until you `config set` a speaker. Each optional speaker supports **both** transports:
+Seed team stays xixi Opus primary + verified OpenRouter `:free` advisors until you `config set` a speaker. Each optional speaker supports **both** transports:
 
 | Transport | yaml | What runs |
 | --- | --- | --- |
@@ -87,7 +87,7 @@ The yaml advisor list accepts **both** catalogs. Do not mix slugs: Zen ids are *
 
 | Pool | Provider id | HTTP `base_url` | Key env | Notes |
 | --- | --- | --- | --- | --- |
-| OpenRouter | `prd-openrouter` | `https://openrouter.ai/api/v1` | `PRD_SFP_OPENROUTER_KEY` | Muse Spark 1.2 official id: **`meta/muse-spark-1.2`** (paid; no `:free` slug). Verified `:free` today: `z-ai/glm-5.2:free`, `minimax/minimax-m3:free`, `nvidia/nemotron-3.5-lightning:free`, `inclusionai/ling-3.0-flash-fin:free`, `google/gemma-4-31b-it:free`, … |
+| OpenRouter | `prd-openrouter` | `https://openrouter.ai/api/v1` | `PRD_SFP_OPENROUTER_KEY` | Muse Spark 1.2 official id: **`meta/muse-spark-1.2`** (paid; no `:free` slug). Seed `:free` slugs: `nvidia/nemotron-3.5-lightning:free`, `inclusionai/ling-3.0-flash-fin:free`, `nvidia/nemotron-3-ultra-550b-a55b:free`, `openrouter/free`. |
 | OpenCode Zen Free | **`opencode`** (sst/opencode) | `https://opencode.ai/zen/v1` | `PRD_OPENCODE_ZEN_KEY` or `OPENCODE_API_KEY` | Mac picker: MiMo V2.5 Free → `mimo-v2.5-free`; Ling 3.0 Flash Fin Free → `ling-3.0-flash-fin-free`; Nemotron 3.5 Lightning Free → `nemotron-3.5-lightning-free`; Nemotron 3 Ultra Free → `nemotron-3-ultra-free`; Big Pickle → `big-pickle`. Docker stays HTTP-only. |
 
 `/discuss` and `/review` **skip** a speaker that fails ping / HTTP 402 / quota. Remaining speakers continue. `write_lock` still binds yaml `primary.id` only. Advisors stay `tools=[]`.
@@ -97,8 +97,10 @@ The yaml advisor list accepts **both** catalogs. Do not mix slugs: Zen ids are *
 | Role | Seed agent id | Seed model | Seed `base_url` | Seed key env | Writes |
 | --- | --- | --- | --- | --- | --- |
 | Lead | `primary` | `claude-opus-5` | `https://xixiapi.io/v1` | `PRD_SFP_XIXI_KEY` | Only in `execute` / `revise` |
-| Advisor | `advisor-sonnet` | `claude-sonnet-5` | `https://xixiapi.io/v1` | `PRD_SFP_XIXI_KEY` | Never (`edit`/`shell` deny, `tools=[]`) |
-| Advisor | `advisor-glm` | `z-ai/glm-5.2:free` | `https://openrouter.ai/api/v1` | `PRD_SFP_OPENROUTER_KEY` | Never — OpenRouter `:free`, not grok |
+| Advisor | `advisor-lightning` | `nvidia/nemotron-3.5-lightning:free` | `https://openrouter.ai/api/v1` | `PRD_SFP_OPENROUTER_KEY` | Never |
+| Advisor | `advisor-ling` | `inclusionai/ling-3.0-flash-fin:free` | `https://openrouter.ai/api/v1` | `PRD_SFP_OPENROUTER_KEY` | Never |
+| Advisor | `advisor-ultra` | `nvidia/nemotron-3-ultra-550b-a55b:free` | `https://openrouter.ai/api/v1` | `PRD_SFP_OPENROUTER_KEY` | Never |
+| Advisor | `advisor-router` | `openrouter/free` | `https://openrouter.ai/api/v1` | `PRD_SFP_OPENROUTER_KEY` | Never — free-model router |
 | Backup (optional) | `prd-gateway` | `grok-4.5` (also `grok-composer-2.5-fast`) | `http://127.0.0.1:8000/v1` (Mac host). In Docker: `http://host.docker.internal:8000/v1` via `PRD_AI_GATEWAY_URL` | `PRD_AI_GATEWAY_KEY` | Never — grok2api, **not Claude**. 429 = reachable, quota empty; keep optional. |
 
 ## Session contract
@@ -138,7 +140,7 @@ pip install -e ".[dev]"
 
 prd-ai-battle init
 cp prd-ai-battle.env.example prd-ai-battle.env   # fill PRD_SFP_XIXI_KEY / PRD_SFP_OPENROUTER_KEY
-prd-ai-battle config set --primary-key '…' --advisor-id advisor-glm --key '…'
+prd-ai-battle config set --primary-key '…' --advisor-id advisor-lightning --key '…'
 # or: export the api_key_env names from the yaml (seed: PRD_SFP_XIXI_KEY / PRD_SFP_OPENROUTER_KEY)
 
 prd-ai-battle ping                 # HTTP probe; backup 429 is not a hard fail
@@ -150,7 +152,7 @@ prd-ai-battle web                  # 只读对照表 http://127.0.0.1:1780（绝
 cd crates/prd-board-macos && cargo run   # Mac 窗口：PTY 套住同一套 TUI
 ```
 
-`prd-ai-battle` opens the board. Seed ids are `primary` + `advisor-sonnet` + `advisor-glm` until you change them. OpenCode is optional and used for `/execute` / `/revise` when you launch the engine.
+`prd-ai-battle` opens the board. Seed ids are `primary` + four OpenRouter `:free` advisors until you change them. OpenCode is optional and used for `/execute` / `/revise` when you launch the engine.
 
 ## Mac 窗口（PTY，不是第二套写入）
 

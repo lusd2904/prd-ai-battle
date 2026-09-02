@@ -39,7 +39,17 @@ from prd_ai_battle.mac_speakers import (
 )
 
 
-SEED_AGENT_IDS = ("primary", "advisor-sonnet", "advisor-glm", "advisor-grok", "build")
+SEED_AGENT_IDS = (
+    "primary",
+    "advisor-lightning",
+    "advisor-ling",
+    "advisor-ultra",
+    "advisor-router",
+    "advisor-sonnet",
+    "advisor-glm",
+    "advisor-grok",
+    "build",
+)
 
 
 def _slug(text: str) -> str:

@@ -17,8 +17,11 @@ Committed `config.example.yaml` / `opencode.json` are **seed only**. Live models
 Seed snapshot (changeable):
 
 - `primary` — `claude-opus-5` at `https://xixiapi.io/v1` (`PRD_SFP_XIXI_KEY`)
-- `advisor-sonnet` — `claude-sonnet-5` at `https://xixiapi.io/v1` (`PRD_SFP_XIXI_KEY`)
-- `advisor-glm` — `z-ai/glm-5.2:free` at `https://openrouter.ai/api/v1` (`PRD_SFP_OPENROUTER_KEY`). Verified OpenRouter `:free`. **Not** `x-ai/grok-4.6` (402 without credits).
+- `advisor-lightning` — `nvidia/nemotron-3.5-lightning:free` at OpenRouter (`PRD_SFP_OPENROUTER_KEY`)
+- `advisor-ling` — `inclusionai/ling-3.0-flash-fin:free` at OpenRouter
+- `advisor-ultra` — `nvidia/nemotron-3-ultra-550b-a55b:free` at OpenRouter
+- `advisor-router` — `openrouter/free` (OpenRouter free-model router)
+- **Not seed:** `x-ai/grok-4.6` (402 without credits), `meta/muse-spark-1.2` (paid). Optional `advisor-sonnet` on xixi via `config set`.
 - Advisor pool also accepts OpenCode Zen Free (`opencode` provider, `https://opencode.ai/zen/v1`): `mimo-v2.5-free`, `ling-3.0-flash-fin-free`, `nemotron-3.5-lightning-free`, `nemotron-3-ultra-free`, `big-pickle`. These are **not** OpenRouter slugs. Muse Spark 1.2 on OpenRouter is `meta/muse-spark-1.2` (paid).
 - optional `prd-gateway` backup — `grok-4.5` / `grok-composer-2.5-fast` at `http://127.0.0.1:8000/v1` (`PRD_AI_GATEWAY_KEY`). grok2api, **not Claude**. 429 quota = reachable, credits empty — keep optional.
 - optional Mac speakers (not the seed team; `config set` as primary or advisor): Codex CLI, Claude Code CLI, Antigravity (`agy` / `antigravity`, Gemini CLI fallback), Grok CLI / grok2api, optional `prd-xai`, OpenCode Zen Free. Each supports `transport: http` or `transport: cli`. write_lock still binds yaml `primary.id`.

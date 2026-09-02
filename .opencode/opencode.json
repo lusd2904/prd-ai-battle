@@ -32,8 +32,17 @@
         "apiKey": "{env:PRD_SFP_OPENROUTER_KEY}"
       },
       "models": {
-        "z-ai/glm-5.2:free": {
-          "name": "GLM 5.2 (OpenRouter :free, seed advisor)"
+        "nvidia/nemotron-3.5-lightning:free": {
+          "name": "Nemotron 3.5 Lightning (OpenRouter :free, seed)"
+        },
+        "inclusionai/ling-3.0-flash-fin:free": {
+          "name": "Ling 3.0 Flash Fin (OpenRouter :free, seed)"
+        },
+        "nvidia/nemotron-3-ultra-550b-a55b:free": {
+          "name": "Nemotron 3 Ultra (OpenRouter :free, seed)"
+        },
+        "openrouter/free": {
+          "name": "OpenRouter free router (seed)"
         },
         "meta/muse-spark-1.2": {
           "name": "Muse Spark 1.2 (OpenRouter, paid)"
@@ -157,7 +166,10 @@
         "apiKey": "{env:PRD_SFP_OPENROUTER_KEY}"
       },
       "models": {
-        "z-ai/glm-5.2:free": { "name": "GLM 5.2 (OpenRouter :free, seed advisor)" },
+        "nvidia/nemotron-3.5-lightning:free": { "name": "Nemotron 3.5 Lightning (OpenRouter :free, seed)" },
+        "inclusionai/ling-3.0-flash-fin:free": { "name": "Ling 3.0 Flash Fin (OpenRouter :free, seed)" },
+        "nvidia/nemotron-3-ultra-550b-a55b:free": { "name": "Nemotron 3 Ultra (OpenRouter :free, seed)" },
+        "openrouter/free": { "name": "OpenRouter free router (seed)" },
         "meta/muse-spark-1.2": { "name": "Muse Spark 1.2 (OpenRouter, paid)" },
         "x-ai/grok-4.6": { "name": "Grok 4.6 (OpenRouter, optional — not seed)" }
       }
@@ -265,10 +277,10 @@
         "task": "deny"
       }
     },
-    "advisor-sonnet": {
-      "description": "Advisor (Claude Sonnet 5). Discuss and review only. Never edits files.",
+    "advisor-lightning": {
+      "description": "Advisor (Nemotron 3.5 Lightning :free). Discuss and review only. Never edits files.",
       "mode": "all",
-      "model": "prd-xixi/claude-sonnet-5",
+      "model": "prd-openrouter/nvidia/nemotron-3.5-lightning:free",
       "prompt": "{file:./.opencode/prompts/advisor.txt}",
       "permission": {
         "edit": "deny",
@@ -280,10 +292,40 @@
         "bash": false
       }
     },
-    "advisor-glm": {
-      "description": "Advisor (GLM 5.2 OpenRouter :free). Discuss and review only. Never edits files.",
+    "advisor-ling": {
+      "description": "Advisor (Ling 3.0 Flash Fin :free). Discuss and review only. Never edits files.",
       "mode": "all",
-      "model": "prd-openrouter/z-ai/glm-5.2:free",
+      "model": "prd-openrouter/inclusionai/ling-3.0-flash-fin:free",
+      "prompt": "{file:./.opencode/prompts/advisor.txt}",
+      "permission": {
+        "edit": "deny",
+        "bash": "deny"
+      },
+      "tools": {
+        "write": false,
+        "edit": false,
+        "bash": false
+      }
+    },
+    "advisor-ultra": {
+      "description": "Advisor (Nemotron 3 Ultra :free). Discuss and review only. Never edits files.",
+      "mode": "all",
+      "model": "prd-openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
+      "prompt": "{file:./.opencode/prompts/advisor.txt}",
+      "permission": {
+        "edit": "deny",
+        "bash": "deny"
+      },
+      "tools": {
+        "write": false,
+        "edit": false,
+        "bash": false
+      }
+    },
+    "advisor-router": {
+      "description": "Advisor (OpenRouter free router). Discuss and review only. Never edits files.",
+      "mode": "all",
+      "model": "prd-openrouter/openrouter/free",
       "prompt": "{file:./.opencode/prompts/advisor.txt}",
       "permission": {
         "edit": "deny",
@@ -313,21 +355,41 @@
         { "action": "subagent", "resource": "*", "effect": "deny" }
       ]
     },
-    "advisor-sonnet": {
-      "description": "Advisor (Claude Sonnet 5). Discuss and review only. Never edits files.",
+    "advisor-lightning": {
+      "description": "Advisor (Nemotron 3.5 Lightning :free). Discuss and review only. Never edits files.",
       "mode": "all",
-      "model": "prd-xixi/claude-sonnet-5",
-      "system": "You are advisor-sonnet. You never edit files or run shell. See AGENTS.md.",
+      "model": "prd-openrouter/nvidia/nemotron-3.5-lightning:free",
+      "system": "You are advisor-lightning. You never edit files or run shell. See AGENTS.md.",
       "permissions": [
         { "action": "edit", "resource": "*", "effect": "deny" },
         { "action": "shell", "resource": "*", "effect": "deny" }
       ]
     },
-    "advisor-glm": {
-      "description": "Advisor (GLM 5.2 OpenRouter :free). Discuss and review only. Never edits files.",
+    "advisor-ling": {
+      "description": "Advisor (Ling 3.0 Flash Fin :free). Discuss and review only. Never edits files.",
       "mode": "all",
-      "model": "prd-openrouter/z-ai/glm-5.2:free",
-      "system": "You are advisor-glm. You never edit files or run shell. See AGENTS.md.",
+      "model": "prd-openrouter/inclusionai/ling-3.0-flash-fin:free",
+      "system": "You are advisor-ling. You never edit files or run shell. See AGENTS.md.",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "*", "effect": "deny" }
+      ]
+    },
+    "advisor-ultra": {
+      "description": "Advisor (Nemotron 3 Ultra :free). Discuss and review only. Never edits files.",
+      "mode": "all",
+      "model": "prd-openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
+      "system": "You are advisor-ultra. You never edit files or run shell. See AGENTS.md.",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "*", "effect": "deny" }
+      ]
+    },
+    "advisor-router": {
+      "description": "Advisor (OpenRouter free router). Discuss and review only. Never edits files.",
+      "mode": "all",
+      "model": "prd-openrouter/openrouter/free",
+      "system": "You are advisor-router. You never edit files or run shell. See AGENTS.md.",
       "permissions": [
         { "action": "edit", "resource": "*", "effect": "deny" },
         { "action": "shell", "resource": "*", "effect": "deny" }

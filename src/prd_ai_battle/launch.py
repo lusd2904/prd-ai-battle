@@ -23,7 +23,7 @@ INSTALL_HINT = """prd-ai-battle launch 启动 OpenCode 执行/修订引擎（不
   pip install -e ".[dev]"
   prd-ai-battle init
   cp prd-ai-battle.env.example prd-ai-battle.env   # fill keys; do not commit
-  prd-ai-battle config set --primary-key ... --advisor-id advisor-glm --key ...
+  prd-ai-battle config set --primary-key ... --advisor-id advisor-lightning --key ...
   prd-ai-battle ping
   prd-ai-battle launch
 

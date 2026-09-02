@@ -30,9 +30,10 @@ def test_seed_yaml_still_loads_xixi_openrouter_team(monkeypatch):
     cfg = load_config(Path("config.example.yaml"), offline=True)
     assert cfg.primary.model == "claude-opus-5"
     assert cfg.primary.transport == "http"
-    assert cfg.advisors[0].id == "advisor-sonnet"
-    assert cfg.advisors[1].id == "advisor-glm"
-    assert cfg.advisors[1].model == "z-ai/glm-5.2:free"
+    assert cfg.advisors[0].id == "advisor-lightning"
+    assert cfg.advisors[0].model == "nvidia/nemotron-3.5-lightning:free"
+    assert cfg.advisors[1].id == "advisor-ling"
+    assert cfg.advisors[1].model == "inclusionai/ling-3.0-flash-fin:free"
     assert cfg.advisors[1].resolved_base_url(cfg.gateway) == "https://openrouter.ai/api/v1"
 
 

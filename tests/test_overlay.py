@@ -18,6 +18,10 @@ OVERLAY_FILES = [
     ROOT / ".opencode" / "agents" / "primary.md",
     ROOT / ".opencode" / "agents" / "advisor-sonnet.md",
     ROOT / ".opencode" / "agents" / "advisor-glm.md",
+    ROOT / ".opencode" / "agents" / "advisor-lightning.md",
+    ROOT / ".opencode" / "agents" / "advisor-ling.md",
+    ROOT / ".opencode" / "agents" / "advisor-ultra.md",
+    ROOT / ".opencode" / "agents" / "advisor-router.md",
     ROOT / ".opencode" / "agents" / "advisor-grok.md",
     ROOT / ".opencode" / "commands" / "discuss.md",
     ROOT / ".opencode" / "commands" / "lock.md",
@@ -41,15 +45,16 @@ def test_opencode_json_seed_has_primary_and_two_advisors():
     cfg = json.loads((ROOT / "opencode.json").read_text(encoding="utf-8"))
     agents = cfg.get("agent") or cfg.get("agents")
     assert "primary" in agents
-    assert "advisor-sonnet" in agents
-    assert "advisor-glm" in agents
+    assert "advisor-lightning" in agents
+    assert "advisor-ling" in agents
+    assert "advisor-ultra" in agents
+    assert "advisor-router" in agents
     assert "advisor-grok" not in agents
     # Seed snapshot only — runtime overlay is generated from local yaml.
     assert agents["primary"]["model"].endswith("claude-opus-5")
-    sonnet_perm = agents["advisor-sonnet"].get("permission") or {}
-    assert sonnet_perm.get("edit") == "deny"
-    glm_perm = agents["advisor-glm"].get("permission") or {}
-    assert glm_perm.get("edit") == "deny"
+    for aid in ("advisor-lightning", "advisor-ling", "advisor-ultra", "advisor-router"):
+        perm = agents[aid].get("permission") or {}
+        assert perm.get("edit") == "deny"
 
 
 def test_providers_use_env_interpolation_not_secrets():
@@ -88,7 +93,10 @@ def test_seed_prd_gateway_models_are_grok_not_claude():
         assert "claude-opus-5" in xixi
         assert "claude-sonnet-5" in xixi
         openrouter = set(cfg["provider"]["prd-openrouter"]["models"])
-        assert "z-ai/glm-5.2:free" in openrouter
+        assert "nvidia/nemotron-3.5-lightning:free" in openrouter
+        assert "inclusionai/ling-3.0-flash-fin:free" in openrouter
+        assert "nvidia/nemotron-3-ultra-550b-a55b:free" in openrouter
+        assert "openrouter/free" in openrouter
         assert "meta/muse-spark-1.2" in openrouter
         zen = set(cfg["provider"]["opencode"]["models"])
         assert "mimo-v2.5-free" in zen
@@ -113,7 +121,16 @@ def test_write_lock_plugin_is_in_repo_hook_not_npm_package():
 
 
 def test_advisor_markdown_denies_edit_and_does_not_pin_a_model():
-    for name in ("advisor-sonnet.md", "advisor-glm.md", "advisor-grok.md", "primary.md"):
+    for name in (
+        "advisor-lightning.md",
+        "advisor-ling.md",
+        "advisor-ultra.md",
+        "advisor-router.md",
+        "advisor-sonnet.md",
+        "advisor-glm.md",
+        "advisor-grok.md",
+        "primary.md",
+    ):
         text = (ROOT / ".opencode" / "agents" / name).read_text(encoding="utf-8")
         front, _, _ = text.partition("---\n")
         body_front = text.split("---", 2)[1]
@@ -132,12 +149,19 @@ def test_commands_drive_python_state_machine():
     assert "prd_ai_battle discuss" in discuss
     assert "do not abort discuss" in discuss.lower()
     assert "shared" in discuss.lower() and "timeline" in discuss.lower()
-    for banned in ("advisor-sonnet", "advisor-grok", "advisor-glm", "subagents/teammates", "Agent Teams shape"):
+    for banned in (
+        "advisor-sonnet",
+        "advisor-grok",
+        "advisor-lightning",
+        "advisor-ling",
+        "subagents/teammates",
+        "Agent Teams shape",
+    ):
         assert banned not in discuss
     review = (ROOT / ".opencode" / "commands" / "review.md").read_text(encoding="utf-8")
     assert "advisor-sonnet" not in review
     assert "advisor-grok" not in review
-    assert "advisor-glm" not in review
+    assert "advisor-lightning" not in review
     assert "sidecar" in discuss.lower() or "teammate" in discuss.lower()
 
 

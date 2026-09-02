@@ -46,9 +46,19 @@ OPENROUTER_FREE_MODELS: tuple[str, ...] = (
     "openrouter/free",
 )
 
-# Seed default advisor that replaces paid OpenRouter grok (402 / no credits).
-SEED_OPENROUTER_FREE_ADVISOR_ID = "advisor-glm"
-SEED_OPENROUTER_FREE_MODEL = "z-ai/glm-5.2:free"
+# Seed default advisors: verified :free slugs on the user's OpenRouter key.
+# Do not invent slugs. Muse Spark 1.2 / grok are not on this list.
+SEED_OPENROUTER_FREE_ADVISORS: tuple[tuple[str, str], ...] = (
+    ("advisor-lightning", "nvidia/nemotron-3.5-lightning:free"),
+    ("advisor-ling", "inclusionai/ling-3.0-flash-fin:free"),
+    ("advisor-ultra", "nvidia/nemotron-3-ultra-550b-a55b:free"),
+    ("advisor-router", "openrouter/free"),
+)
+SEED_OPENROUTER_FREE_ADVISOR_IDS: tuple[str, ...] = tuple(aid for aid, _mid in SEED_OPENROUTER_FREE_ADVISORS)
+SEED_OPENROUTER_FREE_MODELS: tuple[str, ...] = tuple(mid for _aid, mid in SEED_OPENROUTER_FREE_ADVISORS)
+# Back-compat aliases for the first seed :free advisor (ping URL de-dupe).
+SEED_OPENROUTER_FREE_ADVISOR_ID = SEED_OPENROUTER_FREE_ADVISOR_IDS[0]
+SEED_OPENROUTER_FREE_MODEL = SEED_OPENROUTER_FREE_MODELS[0]
 
 # Paid / optional OpenRouter ids we document but do not put on the seed team.
 OPENROUTER_OPTIONAL_PAID: tuple[str, ...] = (
@@ -122,15 +132,16 @@ def is_zen_free_model(model: str) -> bool:
 
 def openrouter_overlay_models() -> dict[str, dict[str, str]]:
     models: dict[str, dict[str, str]] = {
-        SEED_OPENROUTER_FREE_MODEL: {"name": "GLM 5.2 (OpenRouter :free, seed advisor)"},
         OPENROUTER_MUSE_SPARK_12: {"name": "Muse Spark 1.2 (OpenRouter, paid)"},
         OPENROUTER_MUSE_SPARK_12_CONTRIBUTOR: {
             "name": "Muse Spark 1.2 Contributor (OpenRouter, paid)"
         },
         "x-ai/grok-4.6": {"name": "Grok 4.6 (OpenRouter, optional — not seed; 402 without credits)"},
     }
+    seed_models = set(SEED_OPENROUTER_FREE_MODELS)
     for mid in OPENROUTER_FREE_MODELS:
-        models.setdefault(mid, {"name": f"{mid} (OpenRouter :free)"})
+        tag = "seed advisor" if mid in seed_models else "OpenRouter :free"
+        models.setdefault(mid, {"name": f"{mid} ({tag})"})
     return models
 
 
@@ -194,10 +205,9 @@ def pool_catalog() -> dict[str, Any]:
             ),
             "free_models": list(OPENROUTER_FREE_MODELS),
             "optional_paid": list(OPENROUTER_OPTIONAL_PAID),
-            "seed_advisor": {
-                "id": SEED_OPENROUTER_FREE_ADVISOR_ID,
-                "model": SEED_OPENROUTER_FREE_MODEL,
-            },
+            "seed_advisors": [
+                {"id": aid, "model": mid} for aid, mid in SEED_OPENROUTER_FREE_ADVISORS
+            ],
         },
         "opencode_zen": {
             "provider_id": ZEN_PROVIDER_ID,
@@ -223,8 +233,11 @@ __all__ = [
     "OPENROUTER_MUSE_SPARK_12_CONTRIBUTOR",
     "OPENROUTER_OPTIONAL_PAID",
     "OPENROUTER_PROVIDER_ID",
+    "SEED_OPENROUTER_FREE_ADVISORS",
     "SEED_OPENROUTER_FREE_ADVISOR_ID",
+    "SEED_OPENROUTER_FREE_ADVISOR_IDS",
     "SEED_OPENROUTER_FREE_MODEL",
+    "SEED_OPENROUTER_FREE_MODELS",
     "ZEN_BASE_URL",
     "ZEN_CHAT_COMPLETIONS_FREE",
     "ZEN_FREE_MODELS",

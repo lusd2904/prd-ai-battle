@@ -6,8 +6,9 @@ from prd_ai_battle.advisor_pool import (
     OPENROUTER_FREE_MODELS,
     OPENROUTER_MUSE_SPARK_12,
     OPENROUTER_MUSE_SPARK_12_CONTRIBUTOR,
-    SEED_OPENROUTER_FREE_ADVISOR_ID,
-    SEED_OPENROUTER_FREE_MODEL,
+    SEED_OPENROUTER_FREE_ADVISOR_IDS,
+    SEED_OPENROUTER_FREE_ADVISORS,
+    SEED_OPENROUTER_FREE_MODELS,
     ZEN_BASE_URL,
     ZEN_FREE_MODELS,
     ZEN_PICKER_FREE,
@@ -26,18 +27,19 @@ def test_openrouter_muse_spark_id_is_official_and_not_free():
     assert OPENROUTER_MUSE_SPARK_12_CONTRIBUTOR == "meta/muse-spark-1.2-contributor"
     assert not OPENROUTER_MUSE_SPARK_12.endswith(":free")
     assert OPENROUTER_MUSE_SPARK_12 not in OPENROUTER_FREE_MODELS
+    assert OPENROUTER_MUSE_SPARK_12 not in SEED_OPENROUTER_FREE_MODELS
     catalog = pool_catalog()
     assert catalog["openrouter"]["muse_spark_1_2"] == "meta/muse-spark-1.2"
     assert "paid" in catalog["openrouter"]["muse_spark_1_2_note"].lower()
 
 
 def test_openrouter_free_models_are_verified_slugs():
-    assert "z-ai/glm-5.2:free" in OPENROUTER_FREE_MODELS
-    assert "nvidia/nemotron-3.5-lightning:free" in OPENROUTER_FREE_MODELS
-    assert "inclusionai/ling-3.0-flash-fin:free" in OPENROUTER_FREE_MODELS
+    for mid in SEED_OPENROUTER_FREE_MODELS:
+        assert mid in OPENROUTER_FREE_MODELS
+        assert is_openrouter_free_model(mid)
     assert "x-ai/grok-4.6" not in OPENROUTER_FREE_MODELS
-    assert is_openrouter_free_model("z-ai/glm-5.2:free")
     assert not is_openrouter_free_model("x-ai/grok-4.6")
+    assert not is_openrouter_free_model("meta/muse-spark-1.2")
 
 
 def test_zen_free_models_are_opencode_ids_not_openrouter_slugs():
@@ -53,7 +55,6 @@ def test_zen_free_models_are_opencode_ids_not_openrouter_slugs():
     assert labels["MiMo V2.5 Free"] == "mimo-v2.5-free"
     assert labels["Big Pickle"] == "big-pickle"
     for mid in expected:
-        assert "/" not in mid or mid.startswith("muse-") is False or True
         assert not mid.startswith("nvidia/")
         assert not mid.startswith("inclusionai/")
         assert is_zen_free_model(mid)
@@ -64,17 +65,20 @@ def test_zen_free_models_are_opencode_ids_not_openrouter_slugs():
 
 
 def test_seed_has_no_default_advisor_grok():
-    yaml_text = Path("config.example.yaml").read_text(encoding="utf-8")
     cfg = load_config(Path("config.example.yaml"), offline=True)
     ids = [a.id for a in cfg.advisors]
     models = [a.model for a in cfg.advisors]
     assert "advisor-grok" not in ids
     assert "x-ai/grok-4.6" not in models
-    assert "advisor-sonnet" in ids
-    assert SEED_OPENROUTER_FREE_ADVISOR_ID in ids
-    assert SEED_OPENROUTER_FREE_MODEL in models
-    assert len(cfg.advisors) == 2
-    # Comments may mention optional grok; the parsed default team must not.
+    assert "meta/muse-spark-1.2" not in models
+    assert ids == list(SEED_OPENROUTER_FREE_ADVISOR_IDS)
+    assert models == list(SEED_OPENROUTER_FREE_MODELS)
+    assert SEED_OPENROUTER_FREE_ADVISORS == (
+        ("advisor-lightning", "nvidia/nemotron-3.5-lightning:free"),
+        ("advisor-ling", "inclusionai/ling-3.0-flash-fin:free"),
+        ("advisor-ultra", "nvidia/nemotron-3-ultra-550b-a55b:free"),
+        ("advisor-router", "openrouter/free"),
+    )
 
 
 def test_generated_overlay_includes_both_pools_and_disables_leftover_grok():
@@ -86,12 +90,16 @@ def test_generated_overlay_includes_both_pools_and_disables_leftover_grok():
     for mid in ("mimo-v2.5-free", "big-pickle", "ling-3.0-flash-fin-free"):
         assert mid in zen_models
     or_models = overlay["provider"]["prd-openrouter"]["models"]
-    assert "z-ai/glm-5.2:free" in or_models
+    for mid in SEED_OPENROUTER_FREE_MODELS:
+        assert mid in or_models
     assert "meta/muse-spark-1.2" in or_models
-    assert overlay["agent"]["advisor-glm"]["model"].endswith("z-ai/glm-5.2:free")
+    for aid, mid in SEED_OPENROUTER_FREE_ADVISORS:
+        assert overlay["agent"][aid]["model"].endswith(mid)
     assert overlay["agent"]["advisor-grok"]["disable"] is True
-    glm = next(a for a in cfg.advisors if a.id == "advisor-glm")
-    assert provider_id_for(glm, cfg.gateway.resolved_base_url()) == "prd-openrouter"
+    assert overlay["agent"]["advisor-sonnet"]["disable"] is True
+    assert overlay["agent"]["advisor-glm"]["disable"] is True
+    lightning = next(a for a in cfg.advisors if a.id == "advisor-lightning")
+    assert provider_id_for(lightning, cfg.gateway.resolved_base_url()) == "prd-openrouter"
 
 
 def test_write_lock_seed_binds_yaml_primary_id_only():
@@ -113,7 +121,15 @@ def test_write_lock_seed_binds_yaml_primary_id_only():
     assert machine.tools_for(cfg.primary.id)
     for advisor in cfg.advisors:
         assert machine.tools_for(advisor.id) == []
-    for banned in ("grok", "claude", "codex", "claude-opus-5", "z-ai/glm-5.2:free", "opencode"):
+    for banned in (
+        "grok",
+        "claude",
+        "codex",
+        "claude-opus-5",
+        "nvidia/nemotron-3.5-lightning:free",
+        "openrouter/free",
+        "opencode",
+    ):
         try:
             lock.assert_can_write(banned, machine)
             raise AssertionError(f"{banned} must not unlock writes")
