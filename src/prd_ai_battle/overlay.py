@@ -22,6 +22,14 @@ from prd_ai_battle.config import (
     generated_opencode_path,
     is_backup_gateway_url,
 )
+from prd_ai_battle.advisor_pool import (
+    OPENROUTER_PROVIDER_ID,
+    ZEN_PROVIDER_ID,
+    is_openrouter_url,
+    is_zen_url,
+    openrouter_overlay_provider,
+    zen_overlay_provider,
+)
 from prd_ai_battle.mac_speakers import (
     XAI_BASE_URL,
     XAI_PROVIDER_ID,
@@ -31,7 +39,17 @@ from prd_ai_battle.mac_speakers import (
 )
 
 
-SEED_AGENT_IDS = ("primary", "advisor-sonnet", "advisor-grok", "build")
+SEED_AGENT_IDS = (
+    "primary",
+    "advisor-lightning",
+    "advisor-ling",
+    "advisor-ultra",
+    "advisor-router",
+    "advisor-sonnet",
+    "advisor-glm",
+    "advisor-grok",
+    "build",
+)
 
 
 def _slug(text: str) -> str:
@@ -53,6 +71,10 @@ def provider_id_for(model: ModelConfig, gateway_url: str) -> str:
     url = model.resolved_base_url() or gateway_url
     if is_backup_gateway_url(url, gateway_url):
         return GATEWAY_PROVIDER_ID
+    if is_zen_url(url):
+        return ZEN_PROVIDER_ID
+    if is_openrouter_url(url):
+        return OPENROUTER_PROVIDER_ID
     if (url or "").rstrip("/") == XAI_BASE_URL.rstrip("/"):
         return XAI_PROVIDER_ID
     host = urlparse(url).netloc or urlparse(url).path or "gateway"
@@ -133,6 +155,8 @@ def generate_opencode_config(cfg: AppConfig) -> dict:
     gateway_url = cfg.gateway.resolved_base_url()
     providers: dict[str, dict] = {
         GATEWAY_PROVIDER_ID: _backup_gateway_entry(cfg),
+        OPENROUTER_PROVIDER_ID: openrouter_overlay_provider(),
+        ZEN_PROVIDER_ID: zen_overlay_provider(),
         **optional_overlay_providers(),
     }
     for model in cfg.all_models():

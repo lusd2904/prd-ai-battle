@@ -17,10 +17,14 @@ Committed `config.example.yaml` / `opencode.json` are **seed only**. Live models
 Seed snapshot (changeable):
 
 - `primary` — `claude-opus-5` at `https://xixiapi.io/v1` (`PRD_SFP_XIXI_KEY`)
-- `advisor-sonnet` — `claude-sonnet-5` at `https://xixiapi.io/v1` (`PRD_SFP_XIXI_KEY`)
-- `advisor-grok` — `x-ai/grok-4.6` at `https://openrouter.ai/api/v1` (`PRD_SFP_OPENROUTER_KEY`)
+- `advisor-lightning` — `nvidia/nemotron-3.5-lightning:free` at OpenRouter (`PRD_SFP_OPENROUTER_KEY`)
+- `advisor-ling` — `inclusionai/ling-3.0-flash-fin:free` at OpenRouter
+- `advisor-ultra` — `nvidia/nemotron-3-ultra-550b-a55b:free` at OpenRouter
+- `advisor-router` — `openrouter/free` (OpenRouter free-model router)
+- **Not seed:** `x-ai/grok-4.6` (402 without credits), `meta/muse-spark-1.2` (paid). Optional `advisor-sonnet` on xixi via `config set`.
+- Advisor pool also accepts OpenCode Zen Free (`opencode` provider, `https://opencode.ai/zen/v1`): `mimo-v2.5-free`, `ling-3.0-flash-fin-free`, `nemotron-3.5-lightning-free`, `nemotron-3-ultra-free`, `big-pickle`. These are **not** OpenRouter slugs. Muse Spark 1.2 on OpenRouter is `meta/muse-spark-1.2` (paid).
 - optional `prd-gateway` backup — `grok-4.5` / `grok-composer-2.5-fast` at `http://127.0.0.1:8000/v1` (`PRD_AI_GATEWAY_KEY`). grok2api, **not Claude**. 429 quota = reachable, credits empty — keep optional.
-- optional Mac speakers (not the seed team; `config set` as primary or advisor): Codex CLI, Claude Code CLI, Antigravity (`agy` / `antigravity`, Gemini CLI fallback), Grok CLI / grok2api, optional `prd-xai`. Each supports `transport: http` or `transport: cli`. write_lock still binds yaml `primary.id`.
+- optional Mac speakers (not the seed team; `config set` as primary or advisor): Codex CLI, Claude Code CLI, Antigravity (`agy` / `antigravity`, Gemini CLI fallback), Grok CLI / grok2api, optional `prd-xai`, OpenCode Zen Free. Each supports `transport: http` or `transport: cli`. write_lock still binds yaml `primary.id`.
 
 ## Hard rules
 
@@ -29,8 +33,8 @@ Seed snapshot (changeable):
 - Review input is **only** brief + matrix + chapter_diff. Never the raw tender (`samples/tender.md`, a 招标 PDF) or the repo. Ingest parses PDFs locally (`prd-ai-battle ingest file.pdf`); advisors never receive the file.
 - 响应对照表 columns: 条款 / 是否响应 / 证据页码 / 意见 / 状态. Frozen after `/lock`.
 - write_lock is enforced by `python3 -m prd_ai_battle write-check` (source of truth) and `.opencode/plugins/write-lock.js`.
-- During discuss, yaml `primary` + `advisors[]` (not hardcoded names) run a **group chat** on **one shared timeline**: round 0 is a parallel opening on the brief; later rounds give every speaker the FULL `timeline[]` plus brief so they can agree, disagree, or ask each other. Repeat until `/lock`. Advisors stay `tools=[]`. write_lock stays closed. User can interrupt (Esc / 停止); partial utterances stay. Do not spawn OpenCode teammate / sidecar panes. One advisor timeout or HTTP fail must not abort the others (`stream_parallel` isolates errors).
-- During review, every configured advisor runs **in parallel**. Input is **only** brief + matrix + chapter_diff. Findings fold into the same labeled timeline.
+- During discuss, yaml `primary` + `advisors[]` (not hardcoded names) run a **group chat** on **one shared timeline**: round 0 is a parallel opening on the brief; later rounds give every speaker the FULL `timeline[]` plus brief so they can agree, disagree, or ask each other. Repeat until `/lock`. Advisors stay `tools=[]`. write_lock stays closed. User can interrupt (Esc / 停止); partial utterances stay. Do not spawn OpenCode teammate / sidecar panes. One advisor timeout, HTTP fail, **402**, or quota must **skip that speaker** (log the skip); remaining speakers continue (`stream_parallel` isolates errors).
+- During review, every configured advisor runs **in parallel**. Input is **only** brief + matrix + chapter_diff. Findings fold into the same labeled timeline. A 402/quota/ping fail skips that advisor; others still review.
 
 ## Docker (local only)
 

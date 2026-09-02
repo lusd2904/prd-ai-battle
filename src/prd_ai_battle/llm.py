@@ -40,6 +40,16 @@ class _RetryableHTTP(LLMError):
     """429 / 5xx before any tokens — ChatClient retries with backoff."""
 
 
+def _is_skip_error(text: str) -> bool:
+    """402 payment / quota errors skip that speaker instead of hanging the round."""
+    blob = (text or "").lower()
+    if "http 402" in blob or "payment_required" in blob:
+        return True
+    if "http 429" in blob and ("quota" in blob or "credit" in blob or "rate" in blob):
+        return True
+    return "no credits" in blob or "payment required" in blob
+
+
 class ChatClient:
     """Minimal Chat Completions wrapper. One HTTP stream per model."""
 
@@ -336,7 +346,9 @@ async def stream_parallel(
             await queue.put(StreamDelta(model.id, "", True))
             raise
         except Exception as exc:  # noqa: BLE001 — isolate; do not abort siblings
-            await queue.put(StreamDelta(model.id, f"\n[error] {redact(str(exc))}", True))
+            text = redact(str(exc))
+            tag = "[skipped]" if _is_skip_error(text) else "[error]"
+            await queue.put(StreamDelta(model.id, f"\n{tag} {text}", True))
 
     tasks = [asyncio.create_task(run(m)) for m in models]
     finished = 0

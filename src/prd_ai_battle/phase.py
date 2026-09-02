@@ -135,7 +135,7 @@ def cmd_discuss(
         "Do NOT spawn OpenCode teammates, subagents, or sidecar panes. "
         "Do not assume seed names — speakers are whatever the current yaml lists. "
         "Advisors have tools=[]. write_lock stays closed (no filesystem writes). "
-        "If one speaker times out or errors, the others continue (do not abort discuss). "
+        "If one speaker times out, 402s, hits quota, or fails ping, skip that speaker; the others continue (do not abort discuss). "
         "Discuss the brief only — never dump the raw tender or the repo. "
         "Repeat discuss until the user /lock."
     )

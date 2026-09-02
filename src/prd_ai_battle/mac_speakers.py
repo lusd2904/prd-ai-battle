@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from prd_ai_battle.advisor_pool import ZEN_KEY_ENV, ZEN_KEY_ENV_ALT
+
 # Optional env *names* (values never live in git).
 CODEX_KEY_ENV = "PRD_CODEX_KEY"
 CODEX_KEY_ENV_ALT = "OPENAI_API_KEY"
@@ -50,6 +52,8 @@ OPTIONAL_KEY_ENVS = (
     ANTIGRAVITY_KEY_ENV,
     XAI_KEY_ENV,
     XAI_KEY_ENV_ALT,
+    ZEN_KEY_ENV,
+    ZEN_KEY_ENV_ALT,
 )
 
 OPTIONAL_PROVIDER_IDS = (

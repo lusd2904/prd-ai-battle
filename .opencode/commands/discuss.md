@@ -20,7 +20,7 @@ Do this now:
 2. Present the printed transcript as **one chat with several mouths**. Do **not** spawn OpenCode teammates, subagents, or sidecar panes — Agent Teams are not the product UX.
 3. Speakers are whatever the yaml lists. Do not hardcode advisor names.
 4. Advisors have `tools=[]` — they must not edit, write, or run shell. They saw `brief` + draft 对照表 + the full labeled timeline.
-5. If one speaker times out or errors, the others continue (do not abort discuss).
+5. If one speaker times out, 402s, hits quota, or fails ping, **skip that speaker** (log it). The others continue (do not abort discuss).
 6. Cover ★ must-respond clauses, scoring points, and 废标风险, then recommend 对照表 fills (条款 / 是否响应 / 证据页码 / 意见 / 状态).
 7. Do not write draft files. When the user is ready they will run `/lock`.
 

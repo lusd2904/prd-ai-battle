@@ -15,6 +15,7 @@ def test_backoff_and_retryable_status():
     assert should_retry_status(429)
     assert should_retry_status(503)
     assert not should_retry_status(401)
+    assert not should_retry_status(402)
     assert backoff_seconds(0) == 0.4
     assert backoff_seconds(9) == 1.6
 
