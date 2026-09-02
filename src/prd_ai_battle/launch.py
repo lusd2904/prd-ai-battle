@@ -17,7 +17,9 @@ This product runs on Mac only. Install OpenCode, then relaunch from this repo:
   python3 -m venv .venv && source .venv/bin/activate
   pip install -e ".[dev]"
   prd-ai-battle init
+  cp prd-ai-battle.env.example prd-ai-battle.env   # fill keys; do not commit
   prd-ai-battle config set --primary-key ... --advisor-id advisor-grok --key ...
+  prd-ai-battle ping
   prd-ai-battle
 
 Do not deploy this to a cloud VM. The Textual demo is still available with:

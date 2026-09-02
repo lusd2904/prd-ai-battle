@@ -75,8 +75,9 @@ def cmd_discuss(session: Session, requirement: Path | None = None) -> dict[str, 
     payload["matrix_markdown"] = session.state.matrix.as_prompt_table()
     payload["instruction"] = (
         "Phase=discuss. Fan out to every configured advisor IN PARALLEL. "
-        "Nobody writes files. Advisors have tools=[]. Discuss the brief only — "
-        "never dump the raw tender or the repo."
+        "If one advisor times out or fails, continue with the others — do not "
+        "abort discuss. Nobody writes files. Advisors have tools=[]. Discuss "
+        "the brief only — never dump the raw tender or the repo."
     )
     return payload
 

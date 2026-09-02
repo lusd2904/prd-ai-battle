@@ -23,6 +23,7 @@ def test_phase_happy_path(tmp_path: Path):
     session = load_session(workspace=tmp_path, offline=True)
     discuss = cmd_discuss(session)
     assert discuss["phase"] == Phase.DISCUSS.value
+    assert "do not abort discuss" in discuss["instruction"].lower()
     assert discuss["brief_markdown"]
     assert "目录" in discuss["brief_markdown"] or "Brief" in discuss["brief_markdown"]
     locked = cmd_lock(session)

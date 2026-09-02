@@ -27,6 +27,7 @@ OVERLAY_FILES = [
     ROOT / ".opencode" / "skills" / "prd-battle" / "SKILL.md",
     ROOT / "scripts" / "prd-ai-battle",
     ROOT / "AGENTS.md",
+    ROOT / "prd-ai-battle.env.example",
 ]
 
 
@@ -61,6 +62,21 @@ def test_providers_use_env_interpolation_not_secrets():
         assert not pattern.search(raw), f"secret-like value in opencode.json: {pattern.pattern}"
 
 
+def test_seed_prd_gateway_models_are_grok_not_claude():
+    for path in (ROOT / "opencode.json", ROOT / ".opencode" / "opencode.json"):
+        cfg = json.loads(path.read_text(encoding="utf-8"))
+        for block in (cfg["provider"]["prd-gateway"], cfg["providers"]["prd-gateway"]):
+            models = set(block["models"])
+            assert "grok-4.5" in models
+            assert "grok-composer-2.5-fast" in models
+            assert "claude-opus-5" not in models
+            assert "claude-sonnet-5" not in models
+            assert not any(m.startswith("claude") for m in models)
+        xixi = set(cfg["provider"]["prd-xixi"]["models"])
+        assert "claude-opus-5" in xixi
+        assert "claude-sonnet-5" in xixi
+
+
 def test_write_lock_plugin_is_in_repo_hook_not_npm_package():
     plugin = (ROOT / ".opencode" / "plugins" / "write-lock.js").read_text(encoding="utf-8")
     assert "tool.execute.before" in plugin
@@ -85,6 +101,8 @@ def test_commands_drive_python_state_machine():
     for name in ("discuss", "lock", "execute", "review", "revise"):
         text = (ROOT / ".opencode" / "commands" / f"{name}.md").read_text(encoding="utf-8")
         assert f"phase {name}" in text or f"prd_ai_battle phase {name}" in text
+    discuss = (ROOT / ".opencode" / "commands" / "discuss.md").read_text(encoding="utf-8")
+    assert "do not abort discuss" in discuss.lower()
 
 
 def test_readme_leads_with_opencode_mac_not_textual():
@@ -96,4 +114,7 @@ def test_readme_leads_with_opencode_mac_not_textual():
     assert "gitignored" in readme.lower() or "prd-ai-battle.yaml" in readme
     assert "config set" in readme
     assert "prd-ai-battle.env" in readme
+    assert "prd-ai-battle.env.example" in readme
+    assert "prd-ai-battle ping" in readme
+    assert "grok-4.5" in readme
     assert "do not ship a plugin" in readme.lower() or "not an npm" in readme.lower()

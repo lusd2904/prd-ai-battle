@@ -18,6 +18,7 @@ discuss → locked → execute (primary writes v1)
 | --- | --- | --- |
 | `config.example.yaml` | committed | Seed. First `init` / launch copies it. |
 | `prd-ai-battle.yaml` | **gitignored** | Last-saved primary, advisors, `base_url`, `api_key_env`. Next launch reads this. |
+| `prd-ai-battle.env.example` | committed | Key *names* only (empty values). Copy to `prd-ai-battle.env`. |
 | `prd-ai-battle.env` | **gitignored** | Key *values* loaded into the process environment. Never yaml, never git. |
 | `prd-ai-battle.opencode.json` | **gitignored** | Generated OpenCode overlay from the yaml so agents/*.md cannot freeze models. |
 
@@ -29,6 +30,11 @@ prd-ai-battle config set --primary-key-env MY_KEY --primary-key '…'
 prd-ai-battle config set --advisor-id advisor-grok --model other-grok --base-url https://example.invalid/v1
 prd-ai-battle config set --advisor-id advisor-grok --key-env MY_GROK_KEY --key '…'
 prd-ai-battle doctor               # resolved URLs; keys are "set"/"missing"
+prd-ai-battle ping                 # 8-token POST per provider; keys redacted
+```
+
+```bash
+cp prd-ai-battle.env.example prd-ai-battle.env   # then fill values; do not commit
 ```
 
 Edit `prd-ai-battle.yaml` directly if you prefer, then relaunch. Launch always:
@@ -46,8 +52,7 @@ Edit `prd-ai-battle.yaml` directly if you prefer, then relaunch. Launch always:
 | Lead | `primary` | `claude-opus-5` | `https://xixiapi.io/v1` | `PRD_SFP_XIXI_KEY` | Only in `execute` / `revise` |
 | Advisor | `advisor-sonnet` | `claude-sonnet-5` | `https://xixiapi.io/v1` | `PRD_SFP_XIXI_KEY` | Never (`edit`/`shell` deny, `tools=[]`) |
 | Advisor | `advisor-grok` | `x-ai/grok-4.6` | `https://openrouter.ai/api/v1` | `PRD_SFP_OPENROUTER_KEY` | Never |
-
-Optional backup in the seed: `http://127.0.0.1:8000/v1` + `PRD_AI_GATEWAY_KEY`.
+| Backup (optional) | `prd-gateway` | `grok-4.5` (also `grok-composer-2.5-fast`) | `http://127.0.0.1:8000/v1` | `PRD_AI_GATEWAY_KEY` | Never — grok2api, **not Claude**. 429 = reachable, quota empty; keep optional. |
 
 ## Session contract
 
@@ -85,9 +90,11 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 
 prd-ai-battle init
+cp prd-ai-battle.env.example prd-ai-battle.env   # fill PRD_SFP_XIXI_KEY / PRD_SFP_OPENROUTER_KEY
 prd-ai-battle config set --primary-key '…' --advisor-id advisor-grok --key '…'
 # or: export the api_key_env names from the yaml (seed: PRD_SFP_XIXI_KEY / PRD_SFP_OPENROUTER_KEY)
 
+prd-ai-battle ping                 # HTTP probe; backup 429 is not a hard fail
 prd-ai-battle
 # or: ./scripts/prd-ai-battle
 ```
@@ -109,6 +116,7 @@ Do not run this on a cloud VM.
 ```bash
 prd-ai-battle init
 prd-ai-battle doctor        # resolved URLs; keys redacted as "set"/"missing"
+prd-ai-battle ping          # 8-token POST per provider; 429 on backup = quota empty
 prd-ai-battle phase status
 ```
 
@@ -177,6 +185,7 @@ src/prd_ai_battle/
   bridge.py        # write-check used by the OpenCode overlay
   phase.py         # slash-command backend
   launch.py        # exec OpenCode as this product
+  ping.py          # 8-token provider probe (keys redacted)
   ingest.py        # brief extraction (markdown + local PDF)
   store.py         # transcript + session.json
   llm.py           # OpenAI-compatible SSE; advisors get tools: []

@@ -23,13 +23,19 @@ GENERATED_OPENCODE_NAME = "prd-ai-battle.opencode.json"
 SEED_YAML_NAME = "config.example.yaml"
 
 # Backup gateway default used only when yaml omits gateway.base_url.
+# grok2api on loopback — speaks these model ids, NOT Claude.
 LOCAL_GATEWAY_URL = "http://127.0.0.1:8000/v1"
 GATEWAY_URL_ENV = "PRD_AI_GATEWAY_URL"
 GATEWAY_KEY_ENV = "PRD_AI_GATEWAY_KEY"
+GATEWAY_PROVIDER_ID = "prd-gateway"
+GATEWAY_BACKUP_MODELS = ("grok-4.5", "grok-composer-2.5-fast")
+GATEWAY_BACKUP_PING_MODEL = "grok-4.5"
 
-# Seed env *names* (values never live in git). Mirrored in config.example.yaml.
+# Seed env *names* (values never live in git). Mirrored in config.example.yaml
+# and committed prd-ai-battle.env.example (copy to gitignored prd-ai-battle.env).
 XIXI_KEY_ENV = "PRD_SFP_XIXI_KEY"
 OPENROUTER_KEY_ENV = "PRD_SFP_OPENROUTER_KEY"
+SEED_KEY_ENVS = (XIXI_KEY_ENV, OPENROUTER_KEY_ENV, GATEWAY_KEY_ENV)
 
 
 class ConfigError(ValueError):
@@ -423,6 +429,11 @@ def apply_user_set(
     return keys
 
 
+def is_backup_gateway_url(url: str, gateway_url: str) -> bool:
+    """True when url is the optional grok2api backup (not xixi / OpenRouter)."""
+    return (url or "").rstrip("/") == (gateway_url or "").rstrip("/")
+
+
 def doctor_report(cfg: AppConfig) -> dict:
     """Resolved gateway view with the key redacted."""
     models = []
@@ -447,6 +458,11 @@ def doctor_report(cfg: AppConfig) -> dict:
             "api_key": "set" if cfg.gateway.resolved_key() else "missing",
             "url_env": GATEWAY_URL_ENV,
             "key_env": GATEWAY_KEY_ENV,
+            "provider_id": GATEWAY_PROVIDER_ID,
+            "models": list(GATEWAY_BACKUP_MODELS),
+            "optional": True,
+            "speaks": "grok2api (grok-4.5 / grok-composer-2.5-fast, not Claude)",
         },
         "models": models,
+        "hint": "prd-ai-battle ping  # HTTP probe of each provider; keys redacted",
     }

@@ -20,7 +20,7 @@ This repo **is** the product. OpenCode is the TUI/agent runtime launched as our 
 | `advisor-sonnet` | `claude-sonnet-5` via xixiapi.io | Never (`tools=[]`, edit/shell deny) |
 | `advisor-grok` | `x-ai/grok-4.6` via OpenRouter | Never (`tools=[]`, edit/shell deny) |
 
-Keys: `PRD_SFP_XIXI_KEY`, `PRD_SFP_OPENROUTER_KEY` (never in git). Optional backup: `http://127.0.0.1:8000/v1` + `PRD_AI_GATEWAY_KEY`.
+Keys: `PRD_SFP_XIXI_KEY`, `PRD_SFP_OPENROUTER_KEY` (names in `prd-ai-battle.env.example`; values never in git). Optional `prd-gateway` backup: `http://127.0.0.1:8000/v1` + `PRD_AI_GATEWAY_KEY` — grok2api (`grok-4.5` / `grok-composer-2.5-fast`), **not Claude**.
 
 ## Commands
 
