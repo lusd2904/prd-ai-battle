@@ -530,9 +530,14 @@ class Session:
 
 async def run_offline_pipeline(workspace: Path, *, seed_matrix: bool = True) -> dict:
     """Headless success path: sample → discuss → lock → execute → review → revise."""
+    import shutil
     from prd_ai_battle.config import default_offline_config
 
     session = Session(default_offline_config(str(workspace)), root=workspace)
+    if session.store.drafts_dir.exists():
+        shutil.rmtree(session.store.drafts_dir, ignore_errors=True)
+        session.state.draft_versions = []
+        session.state.artifact_version = ""
     session.client = MockChatClient(delay_s=0.0)
     session.load_sample()
     if seed_matrix:

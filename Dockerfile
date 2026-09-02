@@ -26,7 +26,10 @@ COPY opencode.json ./
 COPY .opencode ./.opencode
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
-RUN pip install --no-cache-dir . \
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+ENV PIP_INDEX_URL=${PIP_INDEX_URL}
+
+RUN pip install --no-cache-dir --default-timeout=120 . \
     && chmod +x /usr/local/bin/docker-entrypoint.sh
 
 ENTRYPOINT ["docker-entrypoint.sh"]

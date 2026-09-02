@@ -41,4 +41,12 @@ if [ "$1" = "prd-ai-battle" ]; then
   shift
   exec prd-ai-battle "$@"
 fi
-exec prd-ai-battle "$@"
+
+case "$1" in
+  tui|web|demo|init|doctor|ping|discuss|ingest|export|screenshot|phase|write-check|record-draft|launch|config|-*)
+    exec prd-ai-battle "$@"
+    ;;
+  *)
+    exec "$@"
+    ;;
+esac
