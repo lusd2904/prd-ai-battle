@@ -38,7 +38,10 @@ REVIEW_ALLOWLIST_SUFFIXES = (
 
 TENDER_NAME_HINTS = (
     "tender.md",
+    "tender.pdf",
     "requirement.md",
+    "requirement.pdf",
+    ".pdf",
     "招标",
 )
 

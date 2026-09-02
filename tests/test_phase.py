@@ -6,7 +6,16 @@ import pytest
 
 from prd_ai_battle.cli import build_parser, cmd_phase, cmd_write_check
 from prd_ai_battle.models import Phase
-from prd_ai_battle.phase import cmd_discuss, cmd_execute, cmd_lock, cmd_review, cmd_revise, load_session
+from prd_ai_battle.phase import (
+    cmd_discuss,
+    cmd_execute,
+    cmd_ingest,
+    cmd_lock,
+    cmd_review,
+    cmd_revise,
+    load_session,
+)
+from pdf_fixture import MINI_TENDER, write_text_pdf
 from prd_ai_battle.state import IllegalTransition
 
 
@@ -70,6 +79,17 @@ def test_cli_write_check_denies_advisor(tmp_path: Path, capsys):
     out = capsys.readouterr().out
     assert '"ok": false' in out
     assert "tools: []" in out or "denied" in out.lower()
+
+
+def test_phase_ingest_pdf(tmp_path: Path):
+    pdf = write_text_pdf(tmp_path / "tender.pdf", MINI_TENDER)
+    session = load_session(workspace=tmp_path / "ws", offline=True)
+    payload = cmd_ingest(session, pdf)
+    assert payload["phase"] == Phase.DISCUSS.value
+    assert payload["parser"] == "pypdf"
+    assert payload["advisor_input"] == "brief"
+    assert "政务云" in payload["brief_markdown"]
+    assert "%PDF" not in payload["brief_markdown"]
 
 
 def test_cli_phase_status(tmp_path: Path, capsys):

@@ -1,4 +1,4 @@
-"""CLI: launch OpenCode (default) | offline TUI | phase | write-check | demo."""
+"""CLI: launch OpenCode (default) | ingest | offline TUI | phase | write-check | demo."""
 
 from __future__ import annotations
 
@@ -48,6 +48,16 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("demo", help="Run the offline discuss → lock → write → review pipeline.", parents=[common])
     sub.add_parser("init", help="Write config.example.yaml → ./prd-ai-battle.yaml")
     sub.add_parser("doctor", help="Print resolved provider base_url (keys redacted).", parents=[common])
+    ingest = sub.add_parser(
+        "ingest",
+        help="Extract brief + 对照表 seed from a 招标 PDF or markdown (local parse).",
+        parents=[common],
+    )
+    ingest.add_argument(
+        "path",
+        type=Path,
+        help="Path to a .pdf (parsed locally with pypdf) or .md tender.",
+    )
     shot = sub.add_parser("screenshot", help="Headless Textual snapshot (SVG).", parents=[common])
     shot.add_argument("-o", "--output", type=Path, default=Path("prd-ai-battle.screenshot.svg"))
 
@@ -259,6 +269,27 @@ def cmd_config(args) -> int:
     return 2
 
 
+def cmd_ingest(args) -> int:
+    """PDF/markdown → text → brief → matrix seed. Raw PDF is never sent to advisors."""
+    from prd_ai_battle.ingest import IngestError
+    from prd_ai_battle.phase import cmd_ingest as run_ingest
+    from prd_ai_battle.phase import dumps, load_session
+    from prd_ai_battle.state import IllegalTransition
+
+    session = load_session(
+        workspace=args.workspace,
+        config_path=args.config,
+        offline=True if args.offline else None,
+    )
+    try:
+        payload = run_ingest(session, args.path)
+    except (IngestError, IllegalTransition, OSError) as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}, indent=2, ensure_ascii=False), file=sys.stderr)
+        return 2
+    print(dumps(payload))
+    return 0
+
+
 def cmd_phase(args) -> int:
     from prd_ai_battle.phase import dumps, load_session
     from prd_ai_battle.phase import (
@@ -354,6 +385,8 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(cmd_doctor(args))
     if command == "tui":
         raise SystemExit(cmd_tui(args))
+    if command == "ingest":
+        raise SystemExit(cmd_ingest(args))
     if command == "phase":
         raise SystemExit(cmd_phase(args))
     if command == "write-check":

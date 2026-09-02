@@ -24,7 +24,7 @@ Seed snapshot (changeable):
 
 - Never commit API keys.
 - Advisors never write files and never run shell.
-- Review input is **only** brief + matrix + chapter_diff. Never the raw tender (`samples/tender.md`) or the repo.
+- Review input is **only** brief + matrix + chapter_diff. Never the raw tender (`samples/tender.md`, a 招标 PDF) or the repo. Ingest parses PDFs locally (`prd-ai-battle ingest file.pdf`); advisors never receive the file.
 - 响应对照表 columns: 条款 / 是否响应 / 证据页码 / 意见 / 状态. Frozen after `/lock`.
 - write_lock is enforced by `python3 -m prd_ai_battle write-check` (source of truth) and `.opencode/plugins/write-lock.js`.
 - During discuss and review, invoke every configured advisor **in parallel**.

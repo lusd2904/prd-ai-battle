@@ -78,3 +78,11 @@ def test_advisor_never_reads_raw_tender_even_in_discuss():
     state = _state(Phase.DISCUSS)
     result = write_check(state, actor_id="advisor-sonnet", tool="read", path="src/prd_ai_battle/data/tender.md")
     assert result["ok"] is False
+
+
+def test_advisor_never_reads_raw_pdf():
+    state = _state(Phase.DISCUSS)
+    pdf = write_check(state, actor_id="advisor-grok", tool="read", path="~/Downloads/招标文件.pdf")
+    assert pdf["ok"] is False
+    named = write_check(state, actor_id="advisor-sonnet", tool="read", path="samples/tender.pdf")
+    assert named["ok"] is False

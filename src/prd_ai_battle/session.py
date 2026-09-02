@@ -7,7 +7,7 @@ from pathlib import Path
 
 from prd_ai_battle.config import AppConfig
 from prd_ai_battle.diffs import chapter_diffs
-from prd_ai_battle.ingest import bundled_sample_path, extract_brief
+from prd_ai_battle.ingest import bundled_sample_path, extract_brief, read_requirement_text
 from prd_ai_battle.llm import ChatClient, MockChatClient, StreamDelta, stream_parallel
 from prd_ai_battle.matrix import apply_offline_seed, matrix_from_brief
 from prd_ai_battle.models import (
@@ -70,7 +70,7 @@ class Session:
         self.store.save_matrix(self.state.matrix)
 
     def load_requirement(self, path: Path) -> Brief:
-        text = path.read_text(encoding="utf-8")
+        text = read_requirement_text(path)
         return self.load_requirement_text(text, source=str(path))
 
     def load_requirement_text(self, text: str, *, source: str = "") -> Brief:
