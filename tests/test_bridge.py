@@ -51,10 +51,15 @@ def test_primary_write_allowed_in_execute_and_revise():
         assert state.tools_for("primary") == ["write_file"]
 
 
-def test_unknown_actor_cannot_write():
+def test_write_lock_binds_configured_primary_id_not_opus_or_seed_name():
     state = _state(Phase.EXECUTE)
-    result = write_check(state, actor_id="unknown", tool="write", path="x.md")
-    assert result["ok"] is False
+    state.primary = "lead"
+    state.advisors = ["advisor-sonnet", "advisor-grok"]
+    assert write_check(state, actor_id="lead", tool="write", path="draft.md")["ok"] is True
+    assert write_check(state, actor_id="primary", tool="write", path="draft.md")["ok"] is False
+    assert write_check(state, actor_id="claude-opus-5", tool="write", path="draft.md")["ok"] is False
+    assert write_check(state, actor_id="build", tool="write", path="draft.md")["ok"] is False
+    assert write_check(state, actor_id="advisor-sonnet", tool="write", path="draft.md")["ok"] is False
 
 
 def test_review_advisor_cannot_read_tender_or_repo():

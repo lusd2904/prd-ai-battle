@@ -6,14 +6,12 @@ from prd_ai_battle.config import (
     GATEWAY_KEY_ENV,
     GATEWAY_URL_ENV,
     LOCAL_GATEWAY_URL,
-    OPENROUTER_BASE_URL,
-    OPENROUTER_KEY_ENV,
-    XIXI_BASE_URL,
-    XIXI_KEY_ENV,
     ConfigError,
     doctor_report,
     expand_env,
     load_config,
+    XIXI_KEY_ENV,
+    OPENROUTER_KEY_ENV,
 )
 from prd_ai_battle.llm import ChatClient
 
@@ -55,14 +53,14 @@ def test_example_uses_product_endpoints_and_env_keys(monkeypatch):
     assert cfg.gateway.resolved_base_url() == LOCAL_GATEWAY_URL
     assert LOCAL_GATEWAY_URL == "http://127.0.0.1:8000/v1"
     assert cfg.primary.model == "claude-opus-5"
-    assert cfg.primary.resolved_base_url(cfg.gateway) == XIXI_BASE_URL
+    assert cfg.primary.resolved_base_url(cfg.gateway) == "https://xixiapi.io/v1"
     assert cfg.primary.api_key_env == XIXI_KEY_ENV
     assert cfg.advisors[0].id == "advisor-sonnet"
     assert cfg.advisors[0].model == "claude-sonnet-5"
-    assert cfg.advisors[0].resolved_base_url(cfg.gateway) == XIXI_BASE_URL
+    assert cfg.advisors[0].resolved_base_url(cfg.gateway) == "https://xixiapi.io/v1"
     assert cfg.advisors[1].id == "advisor-grok"
     assert cfg.advisors[1].model == "x-ai/grok-4.6"
-    assert cfg.advisors[1].resolved_base_url(cfg.gateway) == OPENROUTER_BASE_URL
+    assert cfg.advisors[1].resolved_base_url(cfg.gateway) == "https://openrouter.ai/api/v1"
     assert cfg.advisors[1].api_key_env == OPENROUTER_KEY_ENV
     assert cfg.primary.resolved_key(cfg.gateway) == ""
     assert cfg.primary.chat_completions_url(cfg.gateway).endswith("/chat/completions")
@@ -89,7 +87,7 @@ def test_backup_gateway_env_override(monkeypatch):
     cfg = load_config(Path("config.example.yaml"), offline=True)
     assert cfg.gateway.resolved_base_url() == "http://127.0.0.1:9999/v1"
     # Per-model URLs stay on the product endpoints.
-    assert cfg.primary.resolved_base_url(cfg.gateway) == XIXI_BASE_URL
+    assert cfg.primary.resolved_base_url(cfg.gateway) == "https://xixiapi.io/v1"
 
 
 def test_per_model_override(tmp_path: Path, monkeypatch):

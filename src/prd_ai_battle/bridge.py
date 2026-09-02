@@ -43,18 +43,18 @@ TENDER_NAME_HINTS = (
 )
 
 
+def is_primary_actor(actor_id: str, state: SessionState) -> bool:
+    """write_lock binds the current primary id from config/session — never a model name."""
+    actor = (actor_id or "").strip()
+    return bool(actor) and actor == state.primary
+
+
 def is_advisor_actor(actor_id: str, state: SessionState) -> bool:
     actor = (actor_id or "").strip()
     if not actor or actor == "unknown":
-        # Fail closed for writes: unknown caller is not the primary.
-        return actor != state.primary
-    if actor == state.primary:
-        return False
-    if actor in state.advisors:
+        # Fail closed for writes: unknown caller is not the current primary.
         return True
-    if actor.startswith("advisor"):
-        return True
-    return actor not in {"primary", "build"}
+    return actor != state.primary
 
 
 def is_write_tool(tool: str) -> bool:
@@ -148,11 +148,11 @@ def write_check(
             payload["ok"] = False
             payload["reason"] = f"{actor_id!r} is not the primary ({state.primary!r})"
             return payload
-        if actor_id not in {state.primary, "primary", "build"}:
+        if not is_primary_actor(actor_id, state):
             payload["ok"] = False
             payload["reason"] = (
-                f"{actor_id!r} is not the primary ({state.primary!r}); "
-                "only primary may write, and only in execute/revise"
+                f"{actor_id!r} is not the current primary ({state.primary!r}); "
+                "only the configured primary id may write, and only in execute/revise"
             )
             return payload
         if not state.write_lock:

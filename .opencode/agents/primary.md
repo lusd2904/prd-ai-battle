@@ -1,24 +1,14 @@
 ---
 description: Lead drafter. Writes files only in execute/revise (write_lock). Spawns advisors in parallel.
 mode: primary
-model: prd-xixi/claude-opus-5
 color: "#58a6ff"
 permission:
   edit: allow
   bash: allow
-  task:
-    advisor-sonnet: allow
-    advisor-grok: allow
 permissions:
   - action: subagent
     resource: "*"
     effect: deny
-  - action: subagent
-    resource: advisor-sonnet
-    effect: allow
-  - action: subagent
-    resource: advisor-grok
-    effect: allow
 ---
 
 You are the **primary** (lead) of prd-ai-battle.

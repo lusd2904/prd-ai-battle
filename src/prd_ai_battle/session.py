@@ -37,6 +37,9 @@ class Session:
         )
         self.store.init(fallback)
         self.state = self.store.load_state(fallback) if self.store.meta_path.exists() else fallback
+        # write_lock always follows the current config primary id, not a stale session or opus name.
+        self.state.primary = config.primary.id
+        self.state.advisors = [a.id for a in config.advisors]
         if not self.store.meta_path.exists():
             self.store.save_state(self.state)
         self._bind()

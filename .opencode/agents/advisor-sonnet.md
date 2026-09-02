@@ -1,7 +1,6 @@
 ---
-description: Advisor (Claude Sonnet 5). Discuss and review only. Never edits files or runs shell.
+description: Advisor. Discuss and review only. Never edits files or runs shell. Model comes from local yaml overlay.
 mode: all
-model: prd-xixi/claude-sonnet-5
 color: "#3fb950"
 permission:
   edit: deny

@@ -35,21 +35,18 @@ def test_overlay_files_exist():
     assert missing == []
 
 
-def test_opencode_json_has_primary_and_two_advisors():
+def test_opencode_json_seed_has_primary_and_two_advisors():
     cfg = json.loads((ROOT / "opencode.json").read_text(encoding="utf-8"))
     agents = cfg.get("agent") or cfg.get("agents")
     assert "primary" in agents
     assert "advisor-sonnet" in agents
     assert "advisor-grok" in agents
+    # Seed snapshot only — runtime overlay is generated from local yaml.
     assert agents["primary"]["model"].endswith("claude-opus-5")
-    assert agents["advisor-sonnet"]["model"].endswith("claude-sonnet-5")
-    assert "grok-4.6" in agents["advisor-grok"]["model"]
     sonnet_perm = agents["advisor-sonnet"].get("permission") or {}
     assert sonnet_perm.get("edit") == "deny"
-    assert sonnet_perm.get("bash") == "deny"
     grok_perm = agents["advisor-grok"].get("permission") or {}
     assert grok_perm.get("edit") == "deny"
-    assert grok_perm.get("bash") == "deny"
 
 
 def test_providers_use_env_interpolation_not_secrets():
@@ -72,12 +69,16 @@ def test_write_lock_plugin_is_in_repo_hook_not_npm_package():
     assert "WriteLockHook" in plugin
 
 
-def test_advisor_markdown_denies_edit_and_shell():
-    for name in ("advisor-sonnet.md", "advisor-grok.md"):
+def test_advisor_markdown_denies_edit_and_does_not_pin_a_model():
+    for name in ("advisor-sonnet.md", "advisor-grok.md", "primary.md"):
         text = (ROOT / ".opencode" / "agents" / name).read_text(encoding="utf-8")
-        assert "edit: deny" in text
-        assert "bash: deny" in text
-        assert "tools=[]" in text or "tools: []" in text.replace(" ", "")
+        front, _, _ = text.partition("---\n")
+        body_front = text.split("---", 2)[1]
+        assert "edit: deny" in body_front or name == "primary.md"
+        assert "model:" not in body_front
+        if name != "primary.md":
+            assert "bash: deny" in body_front
+            assert "tools=[]" in text or "tools: []" in text.replace(" ", "")
 
 
 def test_commands_drive_python_state_machine():
@@ -92,4 +93,7 @@ def test_readme_leads_with_opencode_mac_not_textual():
     assert readme.find("brew install") < readme.find("prd-ai-battle --offline")
     assert "Mac only" in readme or "Mac only" in readme.replace("\n", " ")
     assert "Do not deploy" in readme or "cloud VM" in readme
-    assert "npm plugin" in readme.lower() or "not an npm" in readme.lower() or "do not ship a plugin" in readme.lower()
+    assert "gitignored" in readme.lower() or "prd-ai-battle.yaml" in readme
+    assert "config set" in readme
+    assert "prd-ai-battle.env" in readme
+    assert "do not ship a plugin" in readme.lower() or "not an npm" in readme.lower()

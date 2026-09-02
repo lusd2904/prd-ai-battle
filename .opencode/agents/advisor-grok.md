@@ -1,7 +1,6 @@
 ---
-description: Advisor (Grok 4.6). Discuss and review only. Never edits files or runs shell.
+description: Advisor. Discuss and review only. Never edits files or runs shell. Model comes from local yaml overlay.
 mode: all
-model: prd-openrouter/x-ai/grok-4.6
 color: "#d2a8ff"
 permission:
   edit: deny

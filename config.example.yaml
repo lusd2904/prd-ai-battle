@@ -1,11 +1,11 @@
-# Product model routing. Copy to prd-ai-battle.yaml (or pass --config).
+# SEED defaults only (finance-platform snapshot). Copy to gitignored
+# prd-ai-battle.yaml via `prd-ai-battle init` / first launch, then change
+# primary, advisors, base_url, and keys. Next launch reads the local yaml,
+# not this file.
 #
-# Keys are NEVER stored in git. Export the env vars on your Mac:
-#   PRD_SFP_XIXI_KEY          — https://xixiapi.io/v1
-#   PRD_SFP_OPENROUTER_KEY    — https://openrouter.ai/api/v1
-#   PRD_AI_GATEWAY_KEY        — optional local backup gateway
-#
-# base_url is the OpenAI-compatible Chat Completions root (no trailing key).
+# Keys are NEVER stored in git. `prd-ai-battle config set --primary-key …`
+# writes them to gitignored prd-ai-battle.env (loaded into the environment).
+
 
 workspace: .prd-ai-battle
 offline: false

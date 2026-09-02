@@ -16,8 +16,8 @@ This product runs on Mac only. Install OpenCode, then relaunch from this repo:
   cd /path/to/prd-ai-battle
   python3 -m venv .venv && source .venv/bin/activate
   pip install -e ".[dev]"
-  export PRD_SFP_XIXI_KEY=...          # xixiapi.io
-  export PRD_SFP_OPENROUTER_KEY=...    # openrouter.ai
+  prd-ai-battle init
+  prd-ai-battle config set --primary-key ... --advisor-id advisor-grok --key ...
   prd-ai-battle
 
 Do not deploy this to a cloud VM. The Textual demo is still available with:
@@ -29,24 +29,27 @@ Do not deploy this to a cloud VM. The Textual demo is still available with:
 def repo_root() -> Path:
     """Walk up from CWD (and this file) looking for the product overlay."""
 
-    candidates = [Path.cwd(), *Path.cwd().parents]
-    here = Path(__file__).resolve()
-    candidates.extend([here.parents[2], here.parents[1]])
-    seen: set[Path] = set()
-    for path in candidates:
-        if path in seen or not path.exists():
-            continue
-        seen.add(path)
-        if (path / "opencode.json").is_file() or (path / ".opencode" / "opencode.json").is_file():
-            return path
-    return Path.cwd()
+    from prd_ai_battle.config import repo_paths
+
+    return repo_paths()
 
 
 def find_opencode() -> str | None:
     return shutil.which("opencode") or shutil.which("opencode2")
 
 
-def launch_env(repo: Path) -> dict[str, str]:
+def prepare_launch(repo: Path | None = None):
+    """Load last-saved yaml, keys env, and generate the OpenCode overlay."""
+    from prd_ai_battle.config import load_runtime_config, local_env_path, local_yaml_path
+    from prd_ai_battle.overlay import write_generated_opencode
+
+    root = repo or repo_root()
+    cfg = load_runtime_config(repo=root, ensure_local=True)
+    overlay = write_generated_opencode(cfg, root)
+    return cfg, overlay, local_yaml_path(root), local_env_path(root)
+
+
+def launch_env(repo: Path, overlay: Path) -> dict[str, str]:
     env = os.environ.copy()
     src = repo / "src"
     pythonpath = str(src)
@@ -57,6 +60,12 @@ def launch_env(repo: Path) -> dict[str, str]:
     env["PRD_AI_ROOT"] = str(repo)
     env["PRD_AI_PYTHON"] = sys.executable
     env.setdefault("OPENCODE_EXPERIMENTAL_AGENT_TEAMS", "1")
+    # Generated overlay from local yaml wins over committed seed opencode.json.
+    env["OPENCODE_CONFIG"] = str(overlay)
+    try:
+        env["OPENCODE_CONFIG_CONTENT"] = overlay.read_text(encoding="utf-8")
+    except OSError:
+        pass
     return env
 
 
@@ -81,11 +90,15 @@ def launch_opencode(
     if not binary:
         print(INSTALL_HINT, file=sys.stderr)
         return 1
+    _cfg, overlay, yaml_path, env_path = prepare_launch(root)
     argv = launch_command(root, extra_args)
-    env = launch_env(root)
+    env = launch_env(root, overlay)
     if dry_run:
         print(" ".join(argv))
         print(f"cwd={root}")
+        print(f"config={yaml_path}")
+        print(f"envfile={env_path}")
+        print(f"opencode_overlay={overlay}")
         return 0
     os.chdir(root)
     os.execvpe(argv[0], argv, env)

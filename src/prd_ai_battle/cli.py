@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import shutil
 import sys
 from pathlib import Path
 
@@ -77,10 +76,28 @@ def build_parser() -> argparse.ArgumentParser:
 
     rec = sub.add_parser("record-draft", help="Record an OpenCode write as the next artifact_version.")
     rec.add_argument("--path", required=True)
-    rec.add_argument("--actor", default="primary")
+    rec.add_argument("--actor", default="", help="Defaults to the configured primary id")
     rec.add_argument("--workspace", type=Path, default=None)
     rec.add_argument("--config", type=Path, default=None)
     rec.add_argument("--offline", action="store_true")
+
+    cfgp = sub.add_parser("config", help="Show/set gitignored local Mac yaml (models, urls, keys).")
+    cfg_sub = cfgp.add_subparsers(dest="config_action")
+    cfg_sub.add_parser("show", help="Print last-saved local yaml (keys redacted)")
+    cfg_init = cfg_sub.add_parser("init", help="Copy seed → gitignored prd-ai-battle.yaml")
+    cfg_init.add_argument("--force", action="store_true", help="Overwrite existing local yaml from seed")
+    setter = cfg_sub.add_parser("set", help="Change primary/advisors/base_url/keys and save locally")
+    setter.add_argument("--primary-id")
+    setter.add_argument("--primary-model")
+    setter.add_argument("--primary-base-url")
+    setter.add_argument("--primary-key-env")
+    setter.add_argument("--primary-key", help="Stored in gitignored prd-ai-battle.env, not yaml")
+    setter.add_argument("--advisor-id", help="Existing advisor id, or with --add-advisor a new one")
+    setter.add_argument("--add-advisor", action="store_true")
+    setter.add_argument("--model", help="Advisor model id (with --advisor-id)")
+    setter.add_argument("--base-url", help="Advisor base_url (with --advisor-id)")
+    setter.add_argument("--key-env", help="Advisor api_key_env (with --advisor-id)")
+    setter.add_argument("--key", help="Advisor key → gitignored env file (with --advisor-id)")
     return parser
 
 
@@ -103,18 +120,18 @@ def _config(args):
     return cfg
 
 
-def cmd_init() -> int:
-    dest = Path("prd-ai-battle.yaml")
-    src = Path(__file__).resolve().parents[2] / "config.example.yaml"
-    if not src.exists():
-        src = Path("config.example.yaml")
-    if dest.exists():
-        print(f"already exists: {dest}", file=sys.stderr)
+def cmd_init(*, force: bool = False) -> int:
+    from prd_ai_battle.config import ensure_local_config, local_yaml_path, seed_yaml_path
+
+    dest = local_yaml_path()
+    if dest.exists() and not force:
+        print(f"already exists: {dest}  (gitignored local yaml — edit or `prd-ai-battle config set`)", file=sys.stderr)
         return 1
-    shutil.copy(src, dest)
+    wrote = ensure_local_config(force=force)
     print(
-        f"wrote {dest}  — export PRD_SFP_XIXI_KEY / PRD_SFP_OPENROUTER_KEY "
-        "(or PRD_AI_GATEWAY_KEY for the local backup)"
+        f"wrote {wrote} from seed {seed_yaml_path().name}  "
+        "(gitignored). Set keys with `prd-ai-battle config set --primary-key …` "
+        "or export the api_key_env names."
     )
     return 0
 
@@ -129,17 +146,15 @@ def cmd_demo(args) -> int:
 
 
 def cmd_doctor(args) -> int:
-    from prd_ai_battle.config import doctor_report, load_config, find_config, default_live_config
+    from prd_ai_battle.config import doctor_report, load_runtime_config
 
-    path = find_config(args.config)
-    if path is None:
-        cfg = default_live_config()
-        if args.offline:
-            cfg.offline = True
-        if args.workspace:
-            cfg.workspace = str(args.workspace)
-    else:
-        cfg = _config(args)
+    cfg = load_runtime_config(
+        explicit=getattr(args, "config", None),
+        offline=True if getattr(args, "offline", False) else None,
+        ensure_local=not getattr(args, "offline", False),
+    )
+    if args.workspace:
+        cfg.workspace = str(args.workspace)
     print(json.dumps(doctor_report(cfg), indent=2))
     return 0
 
@@ -185,8 +200,63 @@ def cmd_screenshot(args) -> int:
 def cmd_launch(args) -> int:
     from prd_ai_battle.launch import launch_opencode, repo_root
 
-    extra: list[str] = []
-    return launch_opencode(repo=repo_root(), extra_args=extra or None)
+    return launch_opencode(repo=repo_root())
+
+
+def cmd_config(args) -> int:
+    from prd_ai_battle.config import (
+        apply_user_set,
+        doctor_report,
+        ensure_local_config,
+        load_runtime_config,
+        local_env_path,
+        local_yaml_path,
+        save_local_config,
+    )
+    from prd_ai_battle.overlay import write_generated_opencode
+
+    action = args.config_action or "show"
+    if action == "init":
+        return cmd_init(force=getattr(args, "force", False))
+    cfg = load_runtime_config(ensure_local=True)
+    if action == "show":
+        report = doctor_report(cfg)
+        report["local_yaml"] = str(local_yaml_path())
+        report["local_env"] = str(local_env_path())
+        print(json.dumps(report, indent=2))
+        return 0
+    if action == "set":
+        keys = apply_user_set(
+            cfg,
+            primary_id=args.primary_id,
+            primary_model=args.primary_model,
+            primary_base_url=args.primary_base_url,
+            primary_key_env=args.primary_key_env,
+            primary_key=args.primary_key,
+            advisor_id=args.advisor_id,
+            advisor_model=args.model,
+            advisor_base_url=args.base_url,
+            advisor_key_env=args.key_env,
+            advisor_key=args.key,
+            add_advisor=args.add_advisor,
+        )
+        dest = save_local_config(cfg, keys=keys or None)
+        overlay = write_generated_opencode(cfg)
+        print(
+            json.dumps(
+                {
+                    "saved": str(dest),
+                    "env_file": str(local_env_path()) if keys else None,
+                    "opencode_overlay": str(overlay),
+                    "keys_written": sorted(keys),
+                    "contract": doctor_report(cfg),
+                },
+                indent=2,
+            )
+        )
+        return 0
+    print("usage: prd-ai-battle config [show|init|set]", file=sys.stderr)
+    return 2
 
 
 def cmd_phase(args) -> int:
@@ -260,7 +330,7 @@ def cmd_record_draft(args) -> int:
         offline=True if args.offline else None,
     )
     try:
-        payload = run_record(session, args.path, actor_id=args.actor)
+        payload = run_record(session, args.path, actor_id=args.actor or session.state.primary)
     except (WriteDenied, Exception) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}, indent=2, ensure_ascii=False), file=sys.stderr)
         return 2
@@ -274,6 +344,8 @@ def main(argv: list[str] | None = None) -> None:
     command = args.command
     if command == "init":
         raise SystemExit(cmd_init())
+    if command == "config":
+        raise SystemExit(cmd_config(args))
     if command == "demo":
         raise SystemExit(cmd_demo(args))
     if command == "screenshot":

@@ -2,7 +2,7 @@
 
 This repository **is the product**. [OpenCode](https://opencode.ai) (`sst/opencode`) is the TUI / coding-agent runtime. We do not ship a plugin you install into some other OpenCode project, and we do not grow a from-scratch Textual TUI as the main UX.
 
-Mac only. Clone this repo, install OpenCode, export keys, run `prd-ai-battle`. That launches OpenCode **in this workspace** with our agents, slash commands, and write_lock.
+Mac only. Clone this repo, install OpenCode, save local config, run `prd-ai-battle`. That launches OpenCode **in this workspace** with write_lock bound to **whatever primary id is in your last-saved yaml**.
 
 ```
 discuss → locked → execute (primary writes v1)
@@ -10,17 +10,44 @@ discuss → locked → execute (primary writes v1)
        → revise (primary writes v2)
 ```
 
-## Team (one lead + two advisors)
+## Seed vs local config (you can change everything)
 
-| Role | OpenCode agent | Model | Provider | Key env | Writes |
+`config.example.yaml` and committed `opencode.json` are **seed/defaults only** (a finance-platform snapshot: `claude-opus-5`, `claude-sonnet-5`, `x-ai/grok-4.6`, xixi / OpenRouter URLs). They are not locked into the runtime.
+
+| File | Git | Role |
+| --- | --- | --- |
+| `config.example.yaml` | committed | Seed. First `init` / launch copies it. |
+| `prd-ai-battle.yaml` | **gitignored** | Last-saved primary, advisors, `base_url`, `api_key_env`. Next launch reads this. |
+| `prd-ai-battle.env` | **gitignored** | Key *values* loaded into the process environment. Never yaml, never git. |
+| `prd-ai-battle.opencode.json` | **gitignored** | Generated OpenCode overlay from the yaml so agents/*.md cannot freeze models. |
+
+```bash
+prd-ai-battle init                 # copy seed → gitignored prd-ai-battle.yaml
+prd-ai-battle config show          # last saved; keys redacted
+prd-ai-battle config set --primary-model my-opus --primary-base-url http://127.0.0.1:8000/v1
+prd-ai-battle config set --primary-key-env MY_KEY --primary-key '…'
+prd-ai-battle config set --advisor-id advisor-grok --model other-grok --base-url https://example.invalid/v1
+prd-ai-battle config set --advisor-id advisor-grok --key-env MY_GROK_KEY --key '…'
+prd-ai-battle doctor               # resolved URLs; keys are "set"/"missing"
+```
+
+Edit `prd-ai-battle.yaml` directly if you prefer, then relaunch. Launch always:
+
+1. Loads `prd-ai-battle.env` into the environment (does not override vars you already exported).
+2. Reads `prd-ai-battle.yaml` (creates it from seed if missing).
+3. Generates `prd-ai-battle.opencode.json` and points OpenCode at it.
+
+`write_lock` allows writes only for the **current yaml `primary.id`**, not for the model name `claude-opus-5` and not for a leftover agent named `primary` if you renamed the lead.
+
+## Seed team (until you change it)
+
+| Role | Seed agent id | Seed model | Seed `base_url` | Seed key env | Writes |
 | --- | --- | --- | --- | --- | --- |
 | Lead | `primary` | `claude-opus-5` | `https://xixiapi.io/v1` | `PRD_SFP_XIXI_KEY` | Only in `execute` / `revise` |
 | Advisor | `advisor-sonnet` | `claude-sonnet-5` | `https://xixiapi.io/v1` | `PRD_SFP_XIXI_KEY` | Never (`edit`/`shell` deny, `tools=[]`) |
 | Advisor | `advisor-grok` | `x-ai/grok-4.6` | `https://openrouter.ai/api/v1` | `PRD_SFP_OPENROUTER_KEY` | Never |
 
-Optional backup (currently may 429 on credits): `http://127.0.0.1:8000/v1` + `PRD_AI_GATEWAY_KEY`.
-
-**Never put API keys in git.** Example yaml/json interpolate env vars only.
+Optional backup in the seed: `http://127.0.0.1:8000/v1` + `PRD_AI_GATEWAY_KEY`.
 
 ## Session contract
 
@@ -34,7 +61,7 @@ Persisted as `.prd-ai-battle/session.json` (see `schemas/session.schema.json`):
 | `brief` | Tender / requirement summary (not the raw file) |
 | `matrix` | 响应对照表 |
 | `artifact_version` | `v1` / `v2` / … |
-| `write_lock` | Artifact writes only when `phase` is `execute` or `revise` **and** the actor is `primary` |
+| `write_lock` | Artifact writes only when `phase` is `execute` or `revise` **and** the actor equals the current config `primary.id` |
 
 Matrix row columns: **条款** (`clause`) · **是否响应** (`responded`) · **证据页码** (`evidence_page`) · **意见** (`opinion`) · **状态** (`status`). Locked after discuss; cannot edit when locked.
 
@@ -57,17 +84,15 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 
-export PRD_SFP_XIXI_KEY=...
-export PRD_SFP_OPENROUTER_KEY=...
-# optional backup:
-# export PRD_AI_GATEWAY_KEY=...
-# export PRD_AI_GATEWAY_URL=http://127.0.0.1:8000/v1
+prd-ai-battle init
+prd-ai-battle config set --primary-key '…' --advisor-id advisor-grok --key '…'
+# or: export the api_key_env names from the yaml (seed: PRD_SFP_XIXI_KEY / PRD_SFP_OPENROUTER_KEY)
 
 prd-ai-battle
 # or: ./scripts/prd-ai-battle
 ```
 
-`prd-ai-battle` execs `opencode` in this repo (the product overlay). You should see `primary` plus `advisor-sonnet` and `advisor-grok`.
+`prd-ai-battle` reads your gitignored yaml, generates the OpenCode overlay, then execs `opencode`. Seed ids are `primary` + `advisor-sonnet` + `advisor-grok` until you change them.
 
 Then:
 
@@ -75,16 +100,14 @@ Then:
 | --- | --- |
 | `/discuss` | Ingest the sample 招标文件 if needed; all three models discuss the **brief** in parallel; no writes |
 | `/lock` | Freeze the 对照表 → `phase=locked` |
-| `/execute` | `phase=execute` — only `primary` may write `.prd-ai-battle/drafts/v1/response.md` |
+| `/execute` | `phase=execute` — only the **configured primary id** may write `.prd-ai-battle/drafts/v1/response.md` |
 | `/review` | Advisors review **brief + matrix + chapter_diff** only |
 | `/revise` | `phase=revise` — primary writes the next version |
 
-Tab cycles primary agents. `@advisor-sonnet` / `@advisor-grok` invoke teammates. Do not run this on a cloud VM.
-
-Copy the example Python config if you also want the library CLI:
+Do not run this on a cloud VM.
 
 ```bash
-prd-ai-battle init          # config.example.yaml → ./prd-ai-battle.yaml
+prd-ai-battle init
 prd-ai-battle doctor        # resolved URLs; keys redacted as "set"/"missing"
 prd-ai-battle phase status
 ```

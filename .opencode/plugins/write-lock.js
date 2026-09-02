@@ -110,9 +110,11 @@ export const WriteLockHook = async ({ directory, client }) => {
       const sessionID = permission.sessionID || permission.session_id
       const actor = actorFrom(sessionAgents, sessionID)
       const tool = String(permission.permission || permission.type || permission.tool || "").toLowerCase()
+      const status = runCli(directory, ["phase", "status"])
+      const primary = status.payload && status.payload.primary
       if (
-        actor !== "primary" &&
-        actor !== "build" &&
+        primary &&
+        actor !== primary &&
         (WRITE_TOOLS.has(tool) || SHELL_TOOLS.has(tool) || tool === "edit" || tool === "bash")
       ) {
         output.status = "deny"
@@ -151,7 +153,9 @@ export const WriteLockHook = async ({ directory, client }) => {
       const tool = String(input.tool || "").toLowerCase()
       if (!WRITE_TOOLS.has(tool)) return
       const actor = actorFrom(sessionAgents, input.sessionID)
-      if (actor !== "primary" && actor !== "build") return
+      const status = runCli(directory, ["phase", "status"])
+      const primary = (status.payload && status.payload.primary) || ""
+      if (!primary || actor !== primary) return
       const filePath = pathFromArgs(output.args) || pathFromArgs(input)
       if (!filePath) return
       runCli(directory, ["record-draft", "--actor", actor, "--path", filePath])

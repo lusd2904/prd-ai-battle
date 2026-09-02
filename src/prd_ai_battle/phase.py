@@ -21,13 +21,14 @@ def load_session(
     config_path: Path | None = None,
     offline: bool | None = None,
 ) -> Session:
-    path = find_config(config_path)
-    if path is None:
+    if offline is True and config_path is None:
         cfg = default_offline_config(str(workspace or ".prd-ai-battle"))
-        if offline is not None:
-            cfg.offline = offline
     else:
-        cfg = load_config(path, offline=offline)
+        path = find_config(config_path)
+        if path is None:
+            cfg = default_offline_config(str(workspace or ".prd-ai-battle")) if offline is not False else load_config(None, offline=False)
+        else:
+            cfg = load_config(path, offline=offline)
     if workspace is not None:
         cfg.workspace = str(workspace)
     return Session(cfg, root=Path(cfg.workspace))
@@ -66,7 +67,7 @@ def cmd_discuss(session: Session, requirement: Path | None = None) -> dict[str, 
     payload["brief_markdown"] = session.state.brief.as_prompt_block() if session.state.brief else ""
     payload["matrix_markdown"] = session.state.matrix.as_prompt_table()
     payload["instruction"] = (
-        "Phase=discuss. Fan out to advisor-sonnet and advisor-grok IN PARALLEL. "
+        "Phase=discuss. Fan out to every configured advisor IN PARALLEL. "
         "Nobody writes files. Advisors have tools=[]. Discuss the brief only — "
         "never dump the raw tender or the repo."
     )
@@ -119,7 +120,7 @@ def cmd_review(session: Session) -> dict[str, Any]:
     payload["review_packet_path"] = str(packet_path)
     payload["review_packet"] = packet.as_prompt()
     payload["instruction"] = (
-        "Phase=review. Launch advisor-sonnet and advisor-grok IN PARALLEL. "
+        "Phase=review. Launch every configured advisor IN PARALLEL. "
         "Their ONLY input is the review packet below (brief + matrix + chapter_diff). "
         "Do not attach the repo, the raw tender, or any other files. "
         "Advisors must not edit files or run shell."
