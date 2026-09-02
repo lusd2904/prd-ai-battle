@@ -11,7 +11,8 @@ Lock the compliance matrix. write_lock stays ON.
 
 After this:
 - `phase=locked`
-- 对照表 cannot be edited (条款 / 是否响应 / 证据页码 / 意见 / 状态 are frozen)
+- 对照表 clauses cannot be added or removed
+- 是否响应 / 证据页码 / 意见 stay empty until the primary writes a draft in `/execute` (then record-draft fills them)
 - Nobody may write draft files yet
 - Tell the user to run `/execute` when they want the primary to write v1
 

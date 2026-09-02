@@ -27,7 +27,7 @@ Keys: `PRD_SFP_XIXI_KEY`, `PRD_SFP_OPENROUTER_KEY` (names in `prd-ai-battle.env.
 ## Commands
 
 - `/discuss` — one shared chat: yaml primary + every `advisors[]` speak in parallel; utterances fold into one labeled timeline (no sidecar teammate panes)
-- `/lock` — freeze 响应对照表 (条款 / 是否响应 / 证据页码 / 意见 / 状态)
+- `/lock` — freeze 对照表 clause list (response flags update from the primary draft in execute/revise)
 - `/execute` — current yaml primary writes `.prd-ai-battle/drafts/v1/response.md`
 - `/review` — advisors get **only** brief + matrix + chapter_diff (same shared timeline)
 - `/revise` — primary writes the next version

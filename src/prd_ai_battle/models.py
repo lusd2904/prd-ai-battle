@@ -139,7 +139,24 @@ class ComplianceMatrix(BaseModel):
         body = "\n".join(r.as_prompt_line() for r in self.rows) or "| - | - | - | - | - | - |"
         return header + body + "\n"
 
+    def add_row(self, row: MatrixRow) -> MatrixRow:
+        """Discuss-only. After /lock the clause list cannot grow."""
+        if self.locked:
+            raise MatrixLocked("Locked 对照表 cannot add clauses")
+        self.rows.append(row)
+        return row
+
+    def remove_row(self, clause_id: str) -> MatrixRow:
+        """Discuss-only. After /lock the clause list cannot shrink."""
+        if self.locked:
+            raise MatrixLocked("Locked 对照表 cannot remove clauses")
+        for index, row in enumerate(self.rows):
+            if row.clause_id == clause_id:
+                return self.rows.pop(index)
+        raise KeyError(clause_id)
+
     def cycle_status(self, clause_id: str) -> MatrixRow:
+        """User click-cycle during discuss. After /lock use apply_response instead."""
         if self.locked:
             raise MatrixLocked("Matrix is locked; status cannot change")
         order = [
@@ -152,6 +169,27 @@ class ComplianceMatrix(BaseModel):
             if row.clause_id == clause_id:
                 row.responded = order[(order.index(row.responded) + 1) % len(order)]
                 row.status = RowStatus.FILLED if row.responded is not ResponseStatus.NO else RowStatus.OPEN
+                return row
+        raise KeyError(clause_id)
+
+    def apply_response(
+        self,
+        clause_id: str,
+        *,
+        responded: ResponseStatus,
+        evidence_page: str = "",
+        opinion: str = "",
+    ) -> MatrixRow:
+        """Update 是否响应 / 证据 / 意见 on an existing row. Never add/remove clauses."""
+        for row in self.rows:
+            if row.clause_id == clause_id:
+                row.responded = responded
+                row.evidence_page = evidence_page
+                row.opinion = opinion
+                if not self.locked:
+                    row.status = (
+                        RowStatus.FILLED if responded is not ResponseStatus.NO else RowStatus.OPEN
+                    )
                 return row
         raise KeyError(clause_id)
 

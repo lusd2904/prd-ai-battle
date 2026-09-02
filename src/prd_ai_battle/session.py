@@ -10,7 +10,12 @@ from prd_ai_battle.config import AppConfig
 from prd_ai_battle.diffs import chapter_diffs
 from prd_ai_battle.ingest import bundled_sample_path, extract_brief, read_requirement_text
 from prd_ai_battle.llm import ChatClient, MockChatClient, StreamDelta, stream_parallel
-from prd_ai_battle.matrix import apply_offline_seed, matrix_from_brief
+from prd_ai_battle.matrix import (
+    apply_draft_coverage,
+    apply_offline_seed,
+    matrix_from_brief,
+    resolve_recorded_write_path,
+)
 from prd_ai_battle.models import (
     Brief,
     ChatMessage,
@@ -269,18 +274,27 @@ class Session:
         """Record a draft written by OpenCode's write tool after write-check passed."""
         actor = actor_id or self.state.primary
         self.lock.assert_can_write(actor, self.machine)
-        path = Path(relative_or_absolute)
-        if not path.is_absolute():
-            path = self.store.root / path
+        path = resolve_recorded_write_path(self.store.root, relative_or_absolute)
         version = self.store.latest_version() + 1
         label = f"v{version}"
+        canonical = self.store.draft_path(version)
+        if not path.is_file() and canonical.is_file():
+            path = canonical
         self.machine.record_draft(label)
+        content = path.read_text(encoding="utf-8") if path.is_file() else ""
+        self.apply_draft_to_matrix(content, actor_id=actor)
         self.store.register_draft(
             self.state,
             DraftVersion(version=version, path=str(path), written_by=actor, note="opencode"),
         )
         self.persist()
         return path
+
+    def apply_draft_to_matrix(self, content: str, *, actor_id: str | None = None) -> None:
+        """Primary-only: refresh 是否响应 / 证据 / 意见 from the draft in execute|revise."""
+        actor = actor_id or self.state.primary
+        self.lock.assert_can_write(actor, self.machine)
+        apply_draft_coverage(self.state.matrix, content)
 
     def _tools_map(self, model_ids: list[str]) -> dict[str, list[str]]:
         out: dict[str, list[str]] = {}
@@ -396,10 +410,12 @@ class Session:
         content = "".join(chunks).strip() + "\n"
         path = self.writer.write(self.config.primary.id, "response.md", content, version=version)
         self.last_write_path = path
+        self.apply_draft_to_matrix(content, actor_id=self.config.primary.id)
         self.store.register_draft(
             self.state,
             DraftVersion(version=version, path=str(path), written_by=self.config.primary.id, note=note),
         )
+        self.persist()
         notice = f"\n\n[wrote {path}]"
         self._persist_assistant(self.config.primary.id, f"[wrote {path}]\n\n{content}", phase)
         yield StreamDelta(self.config.primary.id, notice, True)

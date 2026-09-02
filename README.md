@@ -101,7 +101,7 @@ Persisted as `.prd-ai-battle/session.json` (see `schemas/session.schema.json`):
 | `artifact_version` | `v1` / `v2` / … |
 | `write_lock` | Artifact writes only when `phase` is `execute` or `revise` **and** the actor equals the current config `primary.id` |
 
-Matrix row columns: **条款** (`clause`) · **是否响应** (`responded`) · **证据页码** (`evidence_page`) · **意见** (`opinion`) · **状态** (`status`). Locked after discuss; cannot edit when locked.
+Matrix row columns: **条款** (`clause`) · **是否响应** (`responded`) · **证据页码** (`evidence_page`) · **意见** (`opinion`) · **状态** (`status`). After `/lock` the clause list cannot grow or shrink; `是否响应` / 证据 / 意见 update from the primary draft during execute/revise.
 
 Hard rules:
 

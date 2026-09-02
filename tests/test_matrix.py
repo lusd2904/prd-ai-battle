@@ -3,8 +3,8 @@ from pathlib import Path
 import pytest
 
 from prd_ai_battle.ingest import extract_brief, bundled_sample_path
-from prd_ai_battle.matrix import apply_offline_seed, matrix_from_brief
-from prd_ai_battle.models import MatrixLocked, ResponseStatus
+from prd_ai_battle.matrix import apply_draft_coverage, apply_offline_seed, matrix_from_brief
+from prd_ai_battle.models import MatrixLocked, MatrixRow, ResponseStatus
 
 VPN_BRIEF_PATH = Path(__file__).resolve().parent / "fixtures" / "vpn_latency_brief.md"
 
@@ -62,3 +62,34 @@ def test_tender_sample_still_extracts_disqualify_and_star():
     assert "starred" in cats
     assert "disqualifier" in cats
     assert any("★" in row.clause or row.clause.startswith("5.") for row in matrix.rows if row.category == "starred")
+
+
+def test_locked_matrix_cannot_add_or_remove_clauses():
+    text = bundled_sample_path().read_text(encoding="utf-8")
+    matrix = matrix_from_brief(extract_brief(text))
+    first = matrix.rows[0].clause_id
+    matrix.lock()
+    with pytest.raises(MatrixLocked):
+        matrix.add_row(MatrixRow(clause_id="X99", clause="extra"))
+    with pytest.raises(MatrixLocked):
+        matrix.remove_row(first)
+    assert first in {row.clause_id for row in matrix.rows}
+
+
+def test_apply_draft_coverage_yes_partial_no_and_keeps_clause_ids():
+    brief = extract_brief(VPN_BRIEF_PATH.read_text(encoding="utf-8"))
+    matrix = matrix_from_brief(brief)
+    matrix.lock()
+    ids = [row.clause_id for row in matrix.rows]
+    assert len(ids) == 5
+    apply_draft_coverage(
+        matrix,
+        "# 稿\n## 延迟\n量化预期 RTT 改善与延迟优化方案\n\n弱提一句：验收项\n",
+    )
+    assert [row.clause_id for row in matrix.rows] == ids
+    by_id = {row.clause_id: row for row in matrix.rows}
+    assert by_id["S01"].responded is ResponseStatus.YES
+    assert by_id["S01"].evidence_page
+    assert by_id["R05"].responded is ResponseStatus.NO
+    # "验收项" is a short token on R02 — at most partial, never a new clause
+    assert by_id["R02"].responded in {ResponseStatus.NO, ResponseStatus.PARTIAL}
