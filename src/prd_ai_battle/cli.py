@@ -240,6 +240,7 @@ def cmd_ping(args) -> int:
 
 def cmd_tui(args) -> int:
     from prd_ai_battle.config import default_offline_config, load_config, load_runtime_config
+    from prd_ai_battle.projects import BOARD_DIR_NAME, ProjectHub
     from prd_ai_battle.tui.app import BattleApp
 
     workspace = str(args.workspace) if args.workspace else ".prd-ai-battle"
@@ -258,7 +259,9 @@ def cmd_tui(args) -> int:
         )
         if args.workspace:
             cfg.workspace = workspace
-    app = BattleApp(cfg, requirement=args.requirement)
+    home = Path(workspace).resolve() / BOARD_DIR_NAME
+    hub = ProjectHub.open(home, seed_config=cfg)
+    app = BattleApp(cfg, hub=hub, requirement=args.requirement)
     app.run()
     return 0
 

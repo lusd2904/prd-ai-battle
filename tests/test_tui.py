@@ -2,8 +2,11 @@ from pathlib import Path
 
 from prd_ai_battle.config import AppConfig, GatewayConfig, LOCAL_GATEWAY_URL, ModelConfig, default_offline_config
 from prd_ai_battle.models import Phase
+from prd_ai_battle.projects import ProjectHub
 from prd_ai_battle.tui.app import BattleApp, Bubble
 from prd_ai_battle.tui.skin import (
+    BTN_NEW_PROJECT,
+    SIDEBAR_TITLE,
     ADVISOR_PALETTE,
     TAB_BRIEF,
     TAB_MATRIX,
@@ -105,7 +108,15 @@ async def test_tui_load_sample_and_status(tmp_path: Path):
         assert "执行" in labels
         assert "审核" in labels
         assert "修订" in labels
+        assert "新建" in labels
         assert "退出" in labels
+        assert app.query_one("#projects")
+        assert app.query_one("#projects-title")
+        assert SIDEBAR_TITLE == "项目"
+        new_btn = app.query_one("#new-project")
+        label = getattr(new_btn.label, "plain", new_btn.label)
+        assert BTN_NEW_PROJECT in str(label)
+        assert any("active" in btn.classes for btn in app.query(".project-item"))
 
 
 async def test_tui_full_offline_round(tmp_path: Path):
@@ -216,6 +227,94 @@ async def test_tui_export_binding_missing_draft(tmp_path: Path):
         assert (found[0].parent / "响应对照表.md").is_file()
         assert (found[0].parent / "transcript.jsonl").is_file()
         assert (found[0].parent / "session.json").is_file()
+
+
+def _project_cfg(workspace: str, primary_id: str, advisor_id: str) -> AppConfig:
+    cfg = AppConfig(
+        workspace=workspace,
+        offline=True,
+        gateway=GatewayConfig(base_url=LOCAL_GATEWAY_URL, api_key=""),
+        primary=ModelConfig(id=primary_id, model="mock-primary", temperature=0.2),
+        advisors=[ModelConfig(id=advisor_id, model="mock-adv", temperature=0.4)],
+    )
+    return cfg.resolve()
+
+
+async def test_tui_project_list_switch_restores_a(tmp_path: Path):
+    seed = _project_cfg(str(tmp_path / "seed"), "lead-seed", "adv-seed")
+    hub = ProjectHub.open(tmp_path / "board", seed_config=seed, offline=True)
+    rec_a = hub.create_project(
+        "项目甲",
+        config=_project_cfg(str(tmp_path / "a"), "lead-a", "adv-a"),
+        offline=True,
+    )
+    rec_b = hub.create_project(
+        "项目乙",
+        config=_project_cfg(str(tmp_path / "b"), "lead-b", "adv-b"),
+        offline=True,
+    )
+    hub.switch(rec_a.id)
+    app = BattleApp(hub=hub, screenshot_ready=True)
+    async with app.run_test(size=(160, 42)) as pilot:
+        assert {btn.label.plain if hasattr(btn.label, "plain") else str(btn.label) for btn in app.query(".project-item")} >= {
+            "项目甲",
+            "项目乙",
+        }
+        active = next(btn for btn in app.query(".project-item") if "active" in btn.classes)
+        assert "项目甲" in str(active.label)
+        app.action_load_sample()
+        await pilot.pause()
+        app.action_discuss()
+        await _wait_idle(app, pilot)
+        bubbles_a = [(b.model_id, b.body) for b in app.query(Bubble)]
+        assert bubbles_a
+        assert any(mid == "lead-a" for mid, _ in bubbles_a)
+        sess_a = app.session
+        timeline_a = [(m.model_id, m.content) for m in sess_a.load_timeline()]
+        assert timeline_a
+        assert sess_a.state.primary == "lead-a"
+
+        await pilot.click(f"#proj-{rec_b.id}")
+        await pilot.pause()
+        assert app.hub.active_id == rec_b.id
+        assert app.session is hub.session(rec_b.id)
+        assert app.session is not sess_a
+        assert hub.is_mounted(rec_a.id)
+        assert sess_a is hub.session(rec_a.id)
+        active_b = next(btn for btn in app.query(".project-item") if "active" in btn.classes)
+        assert "项目乙" in str(active_b.label)
+        assert "项目甲" not in str(active_b.label)
+        # A's chat widgets are gone from the view; A's session is intact.
+        assert not any(b.model_id == "lead-a" for b in app.query(Bubble))
+        assert [(m.model_id, m.content) for m in sess_a.load_timeline()] == timeline_a
+        assert app.session.state.primary == "lead-b"
+
+        await pilot.click(f"#proj-{rec_a.id}")
+        await pilot.pause()
+        assert app.hub.active_id == rec_a.id
+        assert app.session is sess_a
+        restored = [(b.model_id, b.body) for b in app.query(Bubble)]
+        assert any(mid == "lead-a" for mid, _ in restored)
+        assert [(m.model_id, m.content) for m in app.session.load_timeline()] == timeline_a
+        assert app.session.state.primary == "lead-a"
+        active_again = next(btn for btn in app.query(".project-item") if "active" in btn.classes)
+        assert "项目甲" in str(active_again.label)
+
+
+async def test_tui_new_project_button(tmp_path: Path):
+    app = BattleApp(default_offline_config(str(tmp_path)), screenshot_ready=True)
+    async with app.run_test(size=(160, 42)) as pilot:
+        assert len(app.hub.iter_projects()) == 1
+        name_input = app.query_one("#new-project-name")
+        name_input.value = "项目丁"
+        await pilot.click("#new-project")
+        await pilot.pause()
+        names = [p.name for p in app.hub.iter_projects()]
+        assert "项目丁" in names
+        assert app.hub.active_record().name == "项目丁"
+        active = next(btn for btn in app.query(".project-item") if "active" in btn.classes)
+        assert "项目丁" in str(active.label)
+        assert app.session.store.root.resolve() != Path(tmp_path).resolve()
 
 
 async def _wait_idle(app: BattleApp, pilot, ticks: int = 80) -> None:

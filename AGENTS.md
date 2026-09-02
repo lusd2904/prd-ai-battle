@@ -1,6 +1,6 @@
 # prd-ai-battle
 
-This repository is the product. The user-facing skin is the Chinese Textual **board** (`prd-ai-battle` / `prd-ai-battle tui` / `./scripts/prd-ai-battle`). OpenCode is the execute/revise engine (`prd-ai-battle launch` / slash-command plugin), not a second window. Do not treat this as an npm plugin for some other OpenCode install.
+This repository is the product. The user-facing skin is the Chinese Textual **board** (`prd-ai-battle` / `prd-ai-battle tui` / `./scripts/prd-ai-battle`) with a left **项目** list (many mounted projects; 新建; click to switch). OpenCode is the execute/revise engine (`prd-ai-battle launch` / slash-command plugin), not a second window. Do not treat this as an npm plugin for some other OpenCode install.
 
 ## Phases
 
@@ -12,7 +12,7 @@ Slash commands: `/discuss` `/lock` `/execute` `/review` `/revise`
 
 Committed `config.example.yaml` / `opencode.json` are **seed only**. Live models, `base_url`, agent ids, and key env names come from gitignored `prd-ai-battle.yaml`. Key *names* are listed in committed `prd-ai-battle.env.example`; copy that to gitignored `prd-ai-battle.env` and fill values. Launch loads the env file into the process environment.
 
-`write_lock` binds the **current yaml `primary.id`**, not `claude-opus-5` and not a hardcoded agent name.
+`write_lock` binds the **active project's yaml `primary.id`**, not `claude-opus-5` and not a hardcoded agent name. Each project has its own workspace, yaml, and gitignored env — keys and models must not leak across projects.
 
 Seed snapshot (changeable):
 

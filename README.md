@@ -1,6 +1,6 @@
 # prd-ai-battle
 
-This repository **is the product**. The user-facing skin is the Chinese **Textual board**: one shared labeled timeline, yaml speaker colors, phase rail, and who holds `write_lock` always visible. [OpenCode](https://opencode.ai) stays the execute/revise engine (`prd-ai-battle launch` / slash-command plugin) — not a second window. We do not ship an npm plugin, and we do not grow OpenCode teammate panes.
+This repository **is the product**. The user-facing skin is the Chinese **Textual board**: left **项目** list, one shared labeled timeline, yaml speaker colors, phase rail, and who holds `write_lock` always visible. [OpenCode](https://opencode.ai) stays the execute/revise engine (`prd-ai-battle launch` / slash-command plugin) — not a second window. We do not ship an npm plugin, and we do not grow OpenCode teammate panes.
 
 Mac. Clone this repo, save local config, run `prd-ai-battle`. That opens the board. `write_lock` binds to **whatever primary id is in your last-saved yaml**.
 
@@ -202,6 +202,25 @@ Notes:
 - Discuss still shares the brief, not the file. Review is still **brief + matrix + chapter_diff** only.
 - `write_lock` is unchanged: advisors stay `tools=[]`; primary writes only in `execute` / `revise`.
 
+## 左侧项目列表
+
+看板左侧是**项目**列表。可以挂载多个项目、点 **新建**、单击切换；当前项高亮。切换不会退出看板，也不会销毁其他已挂载会话。
+
+每个项目各自一份：
+
+| 内容 | 位置 |
+| --- | --- |
+| 会话 + 一条时间线 | 该项目的 `.prd-ai-battle/`（`session.json` / `transcript.jsonl` / drafts） |
+| 模型与 `api_key_env` | 该项目的 `prd-ai-battle.yaml` |
+| 密钥 | 该项目的 gitignored `prd-ai-battle.env` |
+
+模型与密钥不得串项目。`write_lock` 只绑定**当前项目** yaml 的 `primary.id`，且仅在该项目的 `execute` / `revise`。甲的执行不得写乙的磁盘。顾问在讨论中仍是 `tools=[]`。`/review` 只看**当前项目**的 brief + matrix + chapter_diff。交叉讨论、停止、导出、阶段轨都只作用于当前项目。
+
+```bash
+prd-ai-battle            # 打开带项目列表的看板
+prd-ai-battle --offline  # 离线看板；新建项目使用模拟模型，不写死种子 model id
+```
+
 ## 看板与离线
 
 产品界面就是看板（`prd-ai-battle` / `prd-ai-battle tui`）。`--offline` 只表示不用网络：
@@ -246,7 +265,8 @@ src/prd_ai_battle/
   store.py         # transcript + session.json
   llm.py           # OpenAI-compatible SSE; advisors get tools: []
   session.py       # group-chat discuss + interrupt
-  tui/app.py       # product board (one timeline)
+  tui/app.py       # product board (project list + one timeline)
+  projects.py      # mounted projects; isolated yaml/env/workspace
   data/tender.md   # bundled sample
 .opencode/
   opencode.json    # providers, agents, commands (app overlay)
