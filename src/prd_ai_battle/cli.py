@@ -48,6 +48,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("demo", help="Run the offline discuss → lock → write → review pipeline.", parents=[common])
     sub.add_parser("init", help="Write config.example.yaml → ./prd-ai-battle.yaml")
     sub.add_parser("doctor", help="Print resolved provider base_url (keys redacted).", parents=[common])
+    sub.add_parser(
+        "ping",
+        help="POST an 8-token chat/completions probe to each configured provider (keys redacted).",
+        parents=[common],
+    )
     ingest = sub.add_parser(
         "ingest",
         help="Extract brief + 对照表 seed from a 招标 PDF or markdown (local parse).",
@@ -167,6 +172,23 @@ def cmd_doctor(args) -> int:
         cfg.workspace = str(args.workspace)
     print(json.dumps(doctor_report(cfg), indent=2))
     return 0
+
+
+def cmd_ping(args) -> int:
+    from prd_ai_battle.config import load_runtime_config
+    from prd_ai_battle.ping import ping_config
+
+    offline = bool(getattr(args, "offline", False))
+    cfg = load_runtime_config(
+        explicit=getattr(args, "config", None),
+        offline=True if offline else None,
+        ensure_local=not offline,
+    )
+    if args.workspace:
+        cfg.workspace = str(args.workspace)
+    report = ping_config(cfg, skip_http=offline)
+    print(json.dumps(report, indent=2))
+    return 0 if report.get("ok") else 1
 
 
 def cmd_tui(args) -> int:
@@ -383,6 +405,8 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(cmd_screenshot(args))
     if command == "doctor":
         raise SystemExit(cmd_doctor(args))
+    if command == "ping":
+        raise SystemExit(cmd_ping(args))
     if command == "tui":
         raise SystemExit(cmd_tui(args))
     if command == "ingest":

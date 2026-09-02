@@ -46,8 +46,8 @@
         "apiKey": "{env:PRD_AI_GATEWAY_KEY}"
       },
       "models": {
-        "claude-opus-5": { "name": "Backup Opus 5" },
-        "claude-sonnet-5": { "name": "Backup Sonnet 5" }
+        "grok-4.5": { "name": "Backup Grok 4.5" },
+        "grok-composer-2.5-fast": { "name": "Backup Grok Composer 2.5 Fast" }
       }
     }
   },
@@ -86,8 +86,8 @@
         "apiKey": "{env:PRD_AI_GATEWAY_KEY}"
       },
       "models": {
-        "claude-opus-5": { "name": "Backup Opus 5" },
-        "claude-sonnet-5": { "name": "Backup Sonnet 5" }
+        "grok-4.5": { "name": "Backup Grok 4.5" },
+        "grok-composer-2.5-fast": { "name": "Backup Grok Composer 2.5 Fast" }
       }
     }
   },

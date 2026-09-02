@@ -3,6 +3,8 @@
 from pathlib import Path
 
 from prd_ai_battle.config import (
+    GATEWAY_BACKUP_MODELS,
+    GATEWAY_PROVIDER_ID,
     apply_user_set,
     ensure_local_config,
     load_config,
@@ -64,6 +66,25 @@ def test_generated_opencode_overlay_follows_yaml_not_seed_opus(tmp_path: Path):
     assert overlay["agent"]["advisor-grok"]["model"].endswith("not-grok")
     assert overlay["agent"]["lead"]["permission"]["task"]["advisor-grok"] == "allow"
     assert overlay["agent"]["primary"]["disable"] is True
+    gw = overlay["provider"][GATEWAY_PROVIDER_ID]
+    assert set(gw["models"]) >= set(GATEWAY_BACKUP_MODELS)
+    assert "claude-opus-5" not in gw["models"]
+    assert "claude-sonnet-5" not in gw["models"]
+
+
+def test_generated_overlay_from_seed_keeps_backup_as_grok(tmp_path: Path):
+    repo = _seed_repo(tmp_path)
+    cfg = load_config(ensure_local_config(repo))
+    overlay = generate_opencode_config(cfg)
+    gw = overlay["provider"][GATEWAY_PROVIDER_ID]
+    assert gw["options"]["baseURL"].endswith(":8000/v1") or "127.0.0.1:8000" in gw["options"]["baseURL"]
+    assert "grok-4.5" in gw["models"]
+    assert "grok-composer-2.5-fast" in gw["models"]
+    assert not any(name.startswith("claude") for name in gw["models"])
+    # Live seed agents stay on xixi / OpenRouter, not fake Claude-on-gateway aliases.
+    assert overlay["agent"]["primary"]["model"].endswith("claude-opus-5")
+    assert "prd-gateway" not in overlay["agent"]["primary"]["model"]
+    assert overlay["agent"]["advisor-grok"]["model"].endswith("x-ai/grok-4.6")
 
 
 def test_gitignore_covers_local_yaml_and_env():
@@ -71,3 +92,5 @@ def test_gitignore_covers_local_yaml_and_env():
     assert "prd-ai-battle.yaml" in text
     assert "prd-ai-battle.env" in text
     assert "prd-ai-battle.opencode.json" in text
+    assert "prd-ai-battle.env.example" not in text
+    assert Path("prd-ai-battle.env.example").is_file()

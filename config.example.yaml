@@ -3,14 +3,18 @@
 # primary, advisors, base_url, and keys. Next launch reads the local yaml,
 # not this file.
 #
-# Keys are NEVER stored in git. `prd-ai-battle config set --primary-key …`
-# writes them to gitignored prd-ai-battle.env (loaded into the environment).
+# Keys are NEVER stored in git. Copy prd-ai-battle.env.example → gitignored
+# prd-ai-battle.env (names only in the example). `prd-ai-battle config set
+# --primary-key …` also writes the env file (loaded into the environment).
 
 
 workspace: .prd-ai-battle
 offline: false
 
-# Optional backup (currently may 429 on credits). Primary/advisors override below.
+# Optional grok2api backup (may 429 on credits — reachable, not healthy).
+# Speaks grok-4.5 / grok-composer-2.5-fast, NOT Claude. Copy key names from
+# prd-ai-battle.env.example → gitignored prd-ai-battle.env.
+# Primary/advisors override base_url below (xixi / OpenRouter).
 gateway:
   base_url: ${PRD_AI_GATEWAY_URL:-http://127.0.0.1:8000/v1}
   api_key: ${PRD_AI_GATEWAY_KEY:-}

@@ -25,6 +25,8 @@ def test_doctor_redacts_key(tmp_path: Path, capsys, monkeypatch):
     assert "super-secret" not in out
     assert '"set"' in out
     assert "xixiapi.io" in out
+    assert "grok-4.5" in out
+    assert "prd-ai-battle ping" in out
 
 
 def test_ingest_pdf_cli_seeds_brief_and_matrix(tmp_path: Path, capsys):

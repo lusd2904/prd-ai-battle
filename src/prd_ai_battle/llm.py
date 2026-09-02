@@ -207,7 +207,12 @@ async def stream_parallel(
     messages_for: dict[str, list[dict[str, str]]],
     tools_for: dict[str, list[str]],
 ) -> AsyncIterator[StreamDelta]:
-    """Fan out one SSE stream per model and yield labeled deltas as they arrive."""
+    """Fan out one SSE stream per model and yield labeled deltas as they arrive.
+
+    One model timeout or HTTP failure is isolated: it becomes an ``[error]``
+    delta for that id and does **not** cancel the other streams. Discuss and
+    review must keep going when a single advisor dies.
+    """
 
     queue: asyncio.Queue[StreamDelta | None] = asyncio.Queue()
 
@@ -220,7 +225,7 @@ async def stream_parallel(
             ):
                 await queue.put(StreamDelta(model.id, token, False))
             await queue.put(StreamDelta(model.id, "", True))
-        except Exception as exc:  # noqa: BLE001 — surface to the TUI as a bubble
+        except Exception as exc:  # noqa: BLE001 — isolate; do not abort siblings
             await queue.put(StreamDelta(model.id, f"\n[error] {exc}", True))
 
     tasks = [asyncio.create_task(run(m)) for m in models]

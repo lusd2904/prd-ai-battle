@@ -3,9 +3,12 @@ from pathlib import Path
 import pytest
 
 from prd_ai_battle.config import (
+    GATEWAY_BACKUP_MODELS,
     GATEWAY_KEY_ENV,
+    GATEWAY_PROVIDER_ID,
     GATEWAY_URL_ENV,
     LOCAL_GATEWAY_URL,
+    SEED_KEY_ENVS,
     ConfigError,
     doctor_report,
     expand_env,
@@ -25,10 +28,12 @@ BANNED_HOST_FRAGMENTS = (
 
 SCAN_PATHS = [
     Path("config.example.yaml"),
+    Path("prd-ai-battle.env.example"),
     Path("schemas/config.schema.json"),
     Path("src/prd_ai_battle/config.py"),
     Path("src/prd_ai_battle/llm.py"),
     Path("src/prd_ai_battle/bridge.py"),
+    Path("src/prd_ai_battle/ping.py"),
     Path("README.md"),
     Path("opencode.json"),
     Path(".opencode/opencode.json"),
@@ -80,6 +85,10 @@ def test_env_keys_redacted_in_doctor(monkeypatch):
     assert "gw-super-secret" not in blob
     assert report["models"][0]["api_key"] == "set"
     assert report["models"][2]["api_key"] == "set"
+    assert report["gateway"]["provider_id"] == GATEWAY_PROVIDER_ID
+    assert report["gateway"]["models"] == list(GATEWAY_BACKUP_MODELS)
+    assert "not Claude" in report["gateway"]["speaks"]
+    assert "ping" in report["hint"]
 
 
 def test_backup_gateway_env_override(monkeypatch):
@@ -132,6 +141,24 @@ advisors:
     )
     with pytest.raises(ConfigError, match="base_url"):
         load_config(path)
+
+
+def test_env_example_has_key_names_only():
+    path = Path("prd-ai-battle.env.example")
+    text = path.read_text(encoding="utf-8")
+    assert "prd-ai-battle.env" in text
+    assert "copy" in text.lower() or "Copy" in text
+    for name in SEED_KEY_ENVS:
+        assert f"{name}=" in text
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        _name, value = line.split("=", 1)
+        assert value.strip() == "", f"{_name} must be empty in env.example"
+    assert "sk-" not in text
+    assert "grok-4.5" in text
+    assert "NOT Claude" in text or "not Claude" in text
 
 
 def test_expand_env_unset_is_empty():

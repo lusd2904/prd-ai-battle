@@ -13,7 +13,15 @@ import re
 from pathlib import Path
 from urllib.parse import urlparse
 
-from prd_ai_battle.config import AppConfig, ModelConfig, generated_opencode_path
+from prd_ai_battle.config import (
+    GATEWAY_BACKUP_MODELS,
+    GATEWAY_KEY_ENV,
+    GATEWAY_PROVIDER_ID,
+    AppConfig,
+    ModelConfig,
+    generated_opencode_path,
+    is_backup_gateway_url,
+)
 
 
 SEED_AGENT_IDS = ("primary", "advisor-sonnet", "advisor-grok", "build")
@@ -23,8 +31,15 @@ def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-") or "gateway"
 
 
+def _claude_alias_on_gateway(model_id: str) -> bool:
+    """grok2api does not speak Claude — never list those ids on prd-gateway."""
+    return model_id.lower().startswith("claude")
+
+
 def provider_id_for(model: ModelConfig, gateway_url: str) -> str:
     url = model.resolved_base_url() or gateway_url
+    if is_backup_gateway_url(url, gateway_url):
+        return GATEWAY_PROVIDER_ID
     host = urlparse(url).netloc or urlparse(url).path or "gateway"
     return "prd-" + _slug(host)
 
@@ -56,12 +71,38 @@ def _provider_entry(model: ModelConfig, gateway_url: str) -> tuple[str, dict]:
     return pid, entry
 
 
+def _backup_gateway_entry(cfg: AppConfig) -> dict:
+    """Stable prd-gateway provider: grok2api models only (not Claude aliases)."""
+    url = cfg.gateway.resolved_base_url().rstrip("/")
+    options = {
+        "baseURL": url,
+        "apiKey": f"{{env:{GATEWAY_KEY_ENV}}}",
+    }
+    models = {
+        mid: {"name": f"Backup {mid}"}
+        for mid in GATEWAY_BACKUP_MODELS
+    }
+    return {
+        "npm": "@ai-sdk/openai-compatible",
+        "name": "Local backup gateway (grok2api)",
+        "env": [GATEWAY_KEY_ENV],
+        "options": options,
+        "package": "@opencode-ai/ai/providers/openai-compatible",
+        "settings": dict(options),
+        "models": models,
+    }
+
+
 def generate_opencode_config(cfg: AppConfig) -> dict:
     """OpenCode v1+v2 overlay driven entirely by AppConfig (the local yaml)."""
     gateway_url = cfg.gateway.resolved_base_url()
-    providers: dict[str, dict] = {}
+    providers: dict[str, dict] = {
+        GATEWAY_PROVIDER_ID: _backup_gateway_entry(cfg),
+    }
     for model in cfg.all_models():
         pid, entry = _provider_entry(model, gateway_url)
+        if pid == GATEWAY_PROVIDER_ID and _claude_alias_on_gateway(model.model):
+            continue
         if pid in providers:
             providers[pid]["models"][model.model] = {"name": f"{model.id} ({model.model})"}
             for env_name in entry["env"]:

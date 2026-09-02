@@ -13,7 +13,7 @@ If the JSON includes `review_packet`, that is the **entire** advisor input.
 
 Do this now:
 1. Confirm `phase=review` and that primary writes are denied again.
-2. Invoke **advisor-sonnet** and **advisor-grok** IN PARALLEL.
+2. Invoke **advisor-sonnet** and **advisor-grok** IN PARALLEL. If one times out or fails, continue with the other — do not abort review.
 3. Paste `review_packet` into each advisor's prompt. Do not attach any other files.
 4. Advisors: tools=[], edit denied, shell denied. They only list gaps vs the locked 对照表.
 5. Summarize their findings for the user. Next step is `/revise`.

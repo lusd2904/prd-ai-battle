@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from prd_ai_battle.config import default_offline_config, expand_env, load_config
+from prd_ai_battle.llm import ChatClient, MockChatClient, stream_parallel
 from prd_ai_battle.models import Phase
 from prd_ai_battle.session import Session, run_offline_pipeline
 from prd_ai_battle.write_lock import WriteDenied
@@ -87,6 +88,53 @@ def test_expand_env(monkeypatch):
     monkeypatch.setenv("FOO_URL", "https://example.test/v1")
     assert expand_env("${FOO_URL}") == "https://example.test/v1"
     assert expand_env("${MISSING:-http://fallback}") == "http://fallback"
+
+
+class _OneAdvisorTimeout(ChatClient):
+    """Live-shaped client: one advisor raises; siblings must still stream."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._ok = MockChatClient(delay_s=0.0)
+
+    async def stream_chat(self, model, messages, *, tools=None):
+        if model.id == "advisor-b":
+            raise TimeoutError("simulated advisor timeout")
+        async for token in self._ok.stream_chat(model, messages, tools=tools):
+            yield token
+
+
+@pytest.mark.asyncio
+async def test_discuss_continues_when_one_advisor_times_out(tmp_path: Path):
+    session = Session(default_offline_config(str(tmp_path)), root=tmp_path)
+    session.client = _OneAdvisorTimeout()
+    session.load_sample()
+    ids: set[str] = set()
+    errored: set[str] = set()
+    async for event in session.discuss():
+        ids.add(event.model_id)
+        if "[error]" in event.text:
+            errored.add(event.model_id)
+    assert {"primary", "advisor-a", "advisor-b"} <= ids
+    assert "advisor-b" in errored
+    assert "primary" not in errored
+    assert "advisor-a" not in errored
+    assert session.state.phase is Phase.DISCUSS
+
+
+@pytest.mark.asyncio
+async def test_stream_parallel_isolates_advisor_failure():
+    cfg = default_offline_config()
+    client = _OneAdvisorTimeout()
+    messages = {m.id: [{"role": "user", "content": "hi"}] for m in cfg.all_models()}
+    tools = {m.id: [] for m in cfg.all_models()}
+    seen: dict[str, str] = {}
+    async for event in stream_parallel(client, cfg.all_models(), messages, tools):
+        seen[event.model_id] = seen.get(event.model_id, "") + event.text
+    assert "[error]" in seen["advisor-b"]
+    assert "timeout" in seen["advisor-b"].lower()
+    assert "[error]" not in seen["primary"]
+    assert seen["advisor-a"]
 
 
 def test_load_example_config(tmp_path: Path, monkeypatch):

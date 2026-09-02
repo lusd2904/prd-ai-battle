@@ -32,7 +32,7 @@
       "properties": {
         "base_url": {
           "type": "string",
-          "description": "OpenAI-compatible Chat Completions root. Live defaults are per-model (xixiapi.io / openrouter.ai) via config.example.yaml and opencode.json. Backup gateway is loopback via PRD_AI_GATEWAY_URL. Do not commit API keys."
+          "description": "OpenAI-compatible Chat Completions root. Live defaults are per-model (xixiapi.io / openrouter.ai) via config.example.yaml and opencode.json. Optional backup is grok2api on loopback (PRD_AI_GATEWAY_URL, default http://127.0.0.1:8000/v1) speaking grok-4.5 / grok-composer-2.5-fast — not Claude. Do not commit API keys."
         },
         "api_key": {
           "type": "string",
