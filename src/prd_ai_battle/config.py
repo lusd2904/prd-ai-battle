@@ -13,7 +13,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, PrivateAttr, field_validator
 
 ENV_PATTERN = re.compile(r"\$\{([A-Z0-9_]+)(?::-([^}]*))?\}")
 
@@ -42,14 +42,24 @@ class ConfigError(ValueError):
     pass
 
 
-def expand_env(value: str) -> str:
+def expand_env(
+    value: str,
+    overlay: dict[str, str] | None = None,
+    *,
+    process_env: bool = True,
+) -> str:
     """Expand ${VAR} and ${VAR:-default}. Unset vars without a default become ''."""
+
+    extra = overlay or {}
 
     def repl(match: re.Match[str]) -> str:
         name, default = match.group(1), match.group(2)
-        found = os.environ.get(name)
-        if found is not None:
-            return found
+        if name in extra:
+            return extra[name]
+        if process_env:
+            found = os.environ.get(name)
+            if found is not None:
+                return found
         return default if default is not None else ""
 
     return ENV_PATTERN.sub(repl, value)
@@ -67,11 +77,16 @@ class GatewayConfig(BaseModel):
 
     base_url: str = f"${{{GATEWAY_URL_ENV}:-{LOCAL_GATEWAY_URL}}}"
     api_key: str = f"${{{GATEWAY_KEY_ENV}:-}}"
+    # Project-scoped bake: HTTP/CLI still call resolved_key(); process env must not leak.
+    _baked: bool = PrivateAttr(default=False)
+    _baked_key: str = PrivateAttr(default="")
 
     def resolved_base_url(self) -> str:
         return expand_env(self.base_url).rstrip("/")
 
     def resolved_key(self) -> str:
+        if self._baked:
+            return self._baked_key
         return expand_env(self.api_key)
 
 
@@ -84,6 +99,9 @@ class ModelConfig(BaseModel):
     temperature: float = 0.4
     transport: str = "http"
     command: str = ""
+    # Set only by bake_project_secrets — never written to yaml.
+    _baked: bool = PrivateAttr(default=False)
+    _baked_key: str = PrivateAttr(default="")
 
     @field_validator("base_url", "api_key", "command")
     @classmethod
@@ -111,6 +129,8 @@ class ModelConfig(BaseModel):
         return url
 
     def resolved_key(self, gateway: GatewayConfig | None = None) -> str:
+        if self._baked:
+            return self._baked_key
         if self.api_key_env:
             found = os.environ.get(self.api_key_env, "")
             if found:
@@ -235,11 +255,8 @@ def generated_opencode_path(repo: Path | None = None) -> Path:
     return (repo or repo_paths()) / GENERATED_OPENCODE_NAME
 
 
-def load_env_file(path: Path) -> dict[str, str]:
-    """Load KEY=value pairs into os.environ if the key is not already set.
-
-    Existing process env wins (the user may have exported a newer key).
-    """
+def read_env_file(path: Path) -> dict[str, str]:
+    """Parse KEY=value pairs. Does not mutate os.environ (project isolation)."""
     loaded: dict[str, str] = {}
     if not path.is_file():
         return loaded
@@ -253,9 +270,90 @@ def load_env_file(path: Path) -> dict[str, str]:
         if not name:
             continue
         loaded[name] = value
+    return loaded
+
+
+def load_env_file(path: Path) -> dict[str, str]:
+    """Load KEY=value pairs into os.environ if the key is not already set.
+
+    Existing process env wins (the user may have exported a newer key).
+    Board projects must use read_env_file + bake_project_secrets instead.
+    """
+    loaded = read_env_file(path)
+    for name, value in loaded.items():
         if name not in os.environ:
             os.environ[name] = value
     return loaded
+
+
+def bake_project_secrets(cfg: AppConfig, overlay: dict[str, str]) -> AppConfig:
+    """Seal this project's env-file keys onto in-memory models.
+
+    HTTP/CLI still call resolved_key(); they must not see another project's
+    process env. Overlay only — process env is ignored so keys cannot leak.
+    Never write baked values back to yaml.
+    """
+    def only(value: str) -> str:
+        return expand_env(value, overlay=overlay, process_env=False)
+
+    gw_key = overlay.get(GATEWAY_KEY_ENV, "") or only(cfg.gateway.api_key)
+    cfg.gateway._baked = True
+    cfg.gateway._baked_key = gw_key
+    baked_gw_url = only(cfg.gateway.base_url).rstrip("/")
+    if baked_gw_url:
+        cfg.gateway.base_url = baked_gw_url
+
+    for model in cfg.all_models():
+        key = ""
+        if model.api_key_env and model.api_key_env in overlay:
+            key = overlay[model.api_key_env]
+        if not key and model.api_key:
+            key = only(model.api_key)
+        if not key and not model.is_cli():
+            key = gw_key
+        model._baked = True
+        model._baked_key = key
+        if model.base_url:
+            model.base_url = only(model.base_url).rstrip("/")
+    return cfg
+
+
+def infer_project_root(workspace: Path) -> Path:
+    """Directory that holds this project's yaml + env (workspace or its parent)."""
+    ws = Path(workspace)
+    if (ws / LOCAL_YAML_NAME).is_file() or (ws / LOCAL_ENV_NAME).is_file():
+        return ws
+    parent = ws.parent
+    if (parent / LOCAL_YAML_NAME).is_file() or (parent / LOCAL_ENV_NAME).is_file():
+        return parent
+    return ws
+
+
+def load_project_config(
+    root: Path,
+    *,
+    offline: bool | None = None,
+    workspace: Path | None = None,
+) -> AppConfig:
+    """Load yaml + this project's env file. Secrets stay on the in-memory config."""
+    root = Path(root)
+    overlay = read_env_file(root / LOCAL_ENV_NAME)
+    yaml_path = root / LOCAL_YAML_NAME
+    ws = Path(workspace) if workspace is not None else root / ".prd-ai-battle"
+    if yaml_path.is_file():
+        cfg = load_config(yaml_path, offline=offline)
+    elif offline is False:
+        dest = ensure_local_config(root)
+        cfg = load_config(dest, offline=offline)
+    else:
+        cfg = default_offline_config(str(ws))
+    if not Path(cfg.workspace).is_absolute():
+        cfg.workspace = str((root / cfg.workspace).resolve() if workspace is None else Path(workspace).resolve())
+    else:
+        cfg.workspace = str(Path(cfg.workspace).resolve())
+    if workspace is not None:
+        cfg.workspace = str(Path(workspace).resolve())
+    return bake_project_secrets(cfg, overlay)
 
 
 def write_env_file(path: Path, updates: dict[str, str]) -> None:

@@ -14,6 +14,7 @@ htmlcov/
 
 # runtime workspaces
 .prd-ai-battle/
+.prd-ai-battle-board/
 workspace/
 *.screenshot.svg
 

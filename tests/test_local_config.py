@@ -138,5 +138,6 @@ def test_gitignore_covers_local_yaml_and_env():
     assert "prd-ai-battle.yaml" in text
     assert "prd-ai-battle.env" in text
     assert "prd-ai-battle.opencode.json" in text
+    assert ".prd-ai-battle-board/" in text
     assert "prd-ai-battle.env.example" not in text
     assert Path("prd-ai-battle.env.example").is_file()

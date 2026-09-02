@@ -10,14 +10,18 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.message import Message
-from textual.widgets import DataTable, Footer, Header, Input, Markdown, Static, TabbedContent, TabPane
+from textual.widgets import Button, DataTable, Footer, Header, Input, Markdown, Static, TabbedContent, TabPane
 
 from prd_ai_battle.config import AppConfig
 from prd_ai_battle.llm import StreamDelta
 from prd_ai_battle.models import Phase, iso_now
+from prd_ai_battle.projects import BOARD_DIR_NAME, ProjectHub
 from prd_ai_battle.session import Session
 from prd_ai_battle.state import IllegalTransition
 from prd_ai_battle.tui.skin import (
+    BTN_NEW_PROJECT,
+    NEW_PROJECT_PLACEHOLDER,
+    SIDEBAR_TITLE,
     TAB_BRIEF,
     TAB_MATRIX,
     TAB_REQUIREMENT,
@@ -97,6 +101,7 @@ class BattleApp(App[None]):
         Binding("r", "review", "审核", show=True),
         Binding("v", "revise", "修订", show=True),
         Binding("slash", "focus_composer", "输入", show=True),
+        Binding("n", "new_project", "新建", show=True),
         Binding("x", "export_bundle", "导出", show=True),
         Binding("escape", "escape", "停止", show=True),
         Binding("q", "quit", "退出", show=True),
@@ -106,25 +111,45 @@ class BattleApp(App[None]):
 
     def __init__(
         self,
-        config: AppConfig,
+        config: AppConfig | None = None,
         *,
+        hub: ProjectHub | None = None,
+        board_home: Path | None = None,
         requirement: Path | None = None,
         screenshot_ready: bool = False,
     ) -> None:
         super().__init__()
-        self.session = Session(config)
-        if screenshot_ready and hasattr(self.session.client, "delay_s"):
-            self.session.client.delay_s = 0.0  # type: ignore[attr-defined]
+        if hub is None:
+            if config is None:
+                raise ValueError("BattleApp requires config or hub")
+            home = Path(board_home) if board_home is not None else Path(config.workspace).resolve() / BOARD_DIR_NAME
+            hub = ProjectHub.open(home, seed_config=config)
+        self.hub = hub
+        self._screenshot_ready = screenshot_ready
+        self._speed_client()
         self._requirement_arg = requirement
         self._live: dict[str, Bubble] = {}
         self._busy = False
         self.status_text = ""
         self._stream_kind = "chat"
 
+    @property
+    def session(self) -> Session:
+        return self.hub.active_session()
+
+    def _speed_client(self) -> None:
+        if self._screenshot_ready and hasattr(self.session.client, "delay_s"):
+            self.session.client.delay_s = 0.0  # type: ignore[attr-defined]
+
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         yield Static(id="status")
         with Horizontal(id="body"):
+            with Vertical(id="projects"):
+                yield Static(SIDEBAR_TITLE, id="projects-title")
+                yield VerticalScroll(id="project-list")
+                yield Button(BTN_NEW_PROJECT, id="new-project")
+                yield Input(placeholder=NEW_PROJECT_PLACEHOLDER, id="new-project-name")
             with Vertical(id="left"):
                 with TabbedContent():
                     with TabPane(TAB_REQUIREMENT, id="tab-req"):
@@ -144,6 +169,7 @@ class BattleApp(App[None]):
     def on_mount(self) -> None:
         table = self.query_one("#matrix", DataTable)
         table.add_columns("条款", "是否响应", "证据页码", "意见", "状态")
+        self._refresh_projects()
         self._refresh_status()
         if self._requirement_arg is not None:
             self._apply_requirement(self._requirement_arg)
@@ -185,6 +211,7 @@ class BattleApp(App[None]):
             phase=state.phase,
             matrix_locked=state.matrix.locked,
             writer_id=state.primary,
+            project_name=self.hub.active_record().name,
         )
 
     def _refresh_state_tab(self) -> None:
@@ -193,8 +220,11 @@ class BattleApp(App[None]):
         cfg = self.session.config
         gw_url = cfg.primary.resolved_base_url(cfg.gateway)
         key_state = "set" if cfg.primary.resolved_key(cfg.gateway) else "missing"
+        project = self.hub.active_record()
         md = (
             f"```\n"
+            f"project: {project.name}\n"
+            f"workspace: {project.workspace}\n"
             f"phase: {state.phase.value}\n"
             f"primary: {state.primary}\n"
             f"advisors: {state.advisors}\n"
@@ -208,7 +238,7 @@ class BattleApp(App[None]):
             f"```\n\n"
             "Advisors always receive `tools: []`.\n"
             "Review input is **brief + matrix + chapter_diff** only.\n"
-            "Keys come from env (`PRD_SFP_XIXI_KEY`, `PRD_SFP_OPENROUTER_KEY`) — never from git."
+            "Keys come from **this project's** gitignored env — never from git, never from other projects."
         )
         self.query_one("#state", Markdown).update(md)
 
@@ -249,6 +279,89 @@ class BattleApp(App[None]):
     def _set_busy(self, busy: bool) -> None:
         self._busy = busy
         self._refresh_status()
+
+    def _refresh_projects(self) -> None:
+        box = self.query_one("#project-list", VerticalScroll)
+        by_id: dict[str, Button] = {}
+        for btn in box.query(".project-item"):
+            pid = (btn.id or "").removeprefix("proj-")
+            if pid:
+                by_id[pid] = btn
+        seen: set[str] = set()
+        active = self.hub.active_id
+        for rec in self.hub.iter_projects():
+            seen.add(rec.id)
+            btn = by_id.get(rec.id)
+            if btn is None:
+                btn = Button(rec.name, id=f"proj-{rec.id}", classes="project-item")
+                box.mount(btn)
+            else:
+                btn.label = rec.name
+            btn.set_class(rec.id == active, "active")
+        for pid, btn in by_id.items():
+            if pid not in seen:
+                btn.remove()
+
+    def _show_session(self) -> None:
+        """Rebuild left panes + timeline from the active project. Other mounts stay."""
+        self._live.clear()
+        chat = self.query_one("#chat", VerticalScroll)
+        chat.remove_children()
+        self._replay_timeline()
+        self._refresh_left()
+        self._refresh_projects()
+        if not self.session.brief and not self.session.requirement:
+            self.query_one("#requirement", Markdown).update(
+                "按 **L** 载入内置招标文件，或传入 `--requirement PATH`。"
+            )
+
+    def switch_project(self, project_id: str) -> None:
+        if project_id == self.hub.active_id:
+            return
+        if self._busy:
+            self.notify("请先停止当前讨论（Esc）再切换项目", severity="warning")
+            return
+        self.hub.active_session().persist()
+        self.hub.switch(project_id)
+        self._speed_client()
+        self._show_session()
+        self.notify(f"已切换到「{self.hub.active_record().name}」")
+
+    def create_project(self, name: str | None = None) -> None:
+        if self._busy:
+            self.notify("请先停止当前讨论（Esc）再新建项目", severity="warning")
+            return
+        rec = self.hub.create_project(name or "")
+        try:
+            self.query_one("#new-project-name", Input).value = ""
+        except Exception:  # noqa: BLE001
+            pass
+        self._speed_client()
+        self._show_session()
+        self.notify(f"已新建「{rec.name}」")
+
+    def action_new_project(self) -> None:
+        raw = ""
+        try:
+            raw = self.query_one("#new-project-name", Input).value.strip()
+        except Exception:  # noqa: BLE001
+            raw = ""
+        self.create_project(raw or None)
+
+    @on(Button.Pressed, "#new-project")
+    def _click_new_project(self) -> None:
+        self.action_new_project()
+
+    @on(Button.Pressed, ".project-item")
+    def _click_project(self, event: Button.Pressed) -> None:
+        button_id = event.button.id or ""
+        if not button_id.startswith("proj-"):
+            return
+        self.switch_project(button_id.removeprefix("proj-"))
+
+    @on(Input.Submitted, "#new-project-name")
+    def _submit_new_project(self, event: Input.Submitted) -> None:
+        self.create_project(event.value.strip() or None)
 
     @on(DataTable.RowSelected, "#matrix")
     def _cycle_matrix(self, event: DataTable.RowSelected) -> None:

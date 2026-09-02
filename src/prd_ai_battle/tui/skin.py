@@ -45,6 +45,10 @@ TAB_BRIEF = "摘要"
 TAB_MATRIX = "对照表"
 TAB_STATE = "状态"
 
+SIDEBAR_TITLE = "项目"
+BTN_NEW_PROJECT = "新建"
+NEW_PROJECT_PLACEHOLDER = "项目名称"
+
 PHASE_ORDER_ZH = tuple(PHASE_LABELS_ZH[p] for p in PHASE_LABELS_ZH)
 
 
@@ -124,8 +128,15 @@ def status_line(*, phase: Phase, matrix_locked: bool, writer_id: str) -> str:
     )
 
 
-def header_subtitle(*, phase: Phase, matrix_locked: bool, writer_id: str) -> str:
+def header_subtitle(
+    *,
+    phase: Phase,
+    matrix_locked: bool,
+    writer_id: str,
+    project_name: str = "",
+) -> str:
     """Header strip: short chrome, no model-id dump."""
-    return (
-        f"{phase_label(phase)} · 对照表{matrix_lock_label(matrix_locked)} · 写入 {writer_id}"
-    )
+    base = f"{phase_label(phase)} · 对照表{matrix_lock_label(matrix_locked)} · 写入 {writer_id}"
+    if project_name:
+        return f"{project_name} · {base}"
+    return base

@@ -57,7 +57,10 @@ class ArtifactWriter:
             version = int(label.lstrip("v"))
         else:
             label = f"v{version}"
-        dest = self.drafts_root / label / relative_path
+        dest = (self.drafts_root / label / relative_path).resolve()
+        root = self.drafts_root.resolve()
+        if not dest.is_relative_to(root):
+            raise WriteDenied("Draft path must stay inside this project's drafts directory")
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(content, encoding="utf-8")
         self.machine.record_draft(label)
