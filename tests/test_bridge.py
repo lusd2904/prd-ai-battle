@@ -1,8 +1,10 @@
 """write-check: advisors tools=[], primary writes only in execute/revise."""
 
+from pathlib import Path
+
 import pytest
 
-from prd_ai_battle.bridge import WRITE_TOOLS, write_check
+from prd_ai_battle.bridge import WRITE_TOOLS, write_check, write_escapes_workspace
 from prd_ai_battle.models import Brief, ComplianceMatrix, MatrixRow, Phase, SessionState
 from prd_ai_battle.write_lock import WriteDenied, WriteLock
 
@@ -134,3 +136,32 @@ def test_unknown_actor_denied_writes_and_shell(phase, actor, tool):
     if tool in WRITE_TOOLS:
         with pytest.raises(WriteDenied, match="unknown"):
             WriteLock(state).assert_can_write(actor)
+
+
+def test_write_check_denies_path_outside_workspace(tmp_path: Path):
+    mine = tmp_path / "project-a"
+    other = tmp_path / "project-b" / "drafts" / "v1" / "response.md"
+    mine.mkdir()
+    other.parent.mkdir(parents=True)
+    other.write_text("nope\n", encoding="utf-8")
+    state = _state(Phase.EXECUTE)
+    foreign = write_check(
+        state,
+        actor_id="primary",
+        tool="write",
+        path=str(other),
+        workspace=mine,
+    )
+    assert foreign["ok"] is False
+    assert "workspace" in foreign["reason"]
+    local = write_check(
+        state,
+        actor_id="primary",
+        tool="write",
+        path="drafts/v1/response.md",
+        workspace=mine,
+    )
+    assert local["ok"] is True
+    assert write_escapes_workspace(str(other), mine)
+    assert write_escapes_workspace("../project-b/drafts/v1/response.md", mine)
+    assert not write_escapes_workspace("drafts/v1/response.md", mine)

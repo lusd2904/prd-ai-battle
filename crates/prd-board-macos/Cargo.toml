@@ -13,6 +13,9 @@ crossterm = "0.28"
 portable-pty = "0.8"
 signal-hook = "0.3"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+rfd = { version = "0.15", default-features = false }
+
 [lib]
 name = "prd_board_macos"
 path = "src/lib.rs"

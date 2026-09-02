@@ -139,6 +139,35 @@ def test_cli_write_check_denies_unknown_actor(tmp_path: Path, capsys):
     assert "unknown" in out.lower()
 
 
+def test_cli_write_check_denies_path_outside_workspace(tmp_path: Path, capsys):
+    mine = tmp_path / "project-a"
+    other = tmp_path / "project-b" / "drafts" / "v1" / "response.md"
+    session = load_session(workspace=mine, offline=True)
+    cmd_discuss(session)
+    cmd_lock(session)
+    cmd_execute(session)
+    other.parent.mkdir(parents=True)
+    other.write_text("foreign\n", encoding="utf-8")
+    args = build_parser().parse_args(
+        [
+            "write-check",
+            "--actor",
+            session.state.primary,
+            "--tool",
+            "write",
+            "--path",
+            str(other),
+            "--workspace",
+            str(mine),
+            "--offline",
+        ]
+    )
+    assert cmd_write_check(args) == 2
+    out = capsys.readouterr().out
+    assert '"ok": false' in out
+    assert "workspace" in out.lower()
+
+
 def test_cli_phase_status(tmp_path: Path, capsys):
     args = build_parser().parse_args(
         ["phase", "discuss", "--workspace", str(tmp_path), "--offline"]

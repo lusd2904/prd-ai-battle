@@ -140,12 +140,13 @@ cd crates/prd-board-macos && cargo run   # Mac 窗口：PTY 套住同一套 TUI
 
 ## Mac 窗口（PTY，不是第二套写入）
 
-本机可见窗口是 `crates/prd-board-macos`：用 PTY 套住产品 Textual TUI，**不自己写稿**。写入仍走 Python 的 `prd-ai-battle write-check`。顾问仍是 `tools: []`。`/lock` 之后对照表条款不能从该窗口另开编辑器改。
+本机可见窗口是 `crates/prd-board-macos`：启动先弹出系统 **选择工作区** 文件夹对话框，再用 PTY 套住产品 Textual TUI，**不自己写稿**。选中的文件夹就是项目 workspace（`prd-ai-battle --workspace`）。写入仍走 Python 的 `prd-ai-battle write-check`，且只允许该 workspace 的 drafts。顾问仍是 `tools: []`。`/lock` 之后对照表条款不能从该窗口另开编辑器改。
 
 ```bash
 cd crates/prd-board-macos
-cargo run                  # 优先 .venv/bin/prd-ai-battle
+cargo run                  # 先选文件夹，再打开该工作区的看板
 cargo run -- --offline
+cargo run -- --workspace .prd-ai-battle/round-matrix
 cargo run -- --matrix      # 打开/打印 http://127.0.0.1:1780
 cargo run -- --docker      # 回退到 docker compose run --rm prd-ai-battle
 ```

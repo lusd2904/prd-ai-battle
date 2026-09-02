@@ -235,7 +235,13 @@ def cmd_write_check(
     tool: str,
     path: str | None = None,
 ) -> dict[str, Any]:
-    return write_check(session.state, actor_id=actor, tool=tool, path=path)
+    return write_check(
+        session.state,
+        actor_id=actor,
+        tool=tool,
+        path=path,
+        workspace=session.store.root,
+    )
 
 
 PHASE_COMMANDS = {

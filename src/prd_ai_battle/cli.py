@@ -268,10 +268,15 @@ def cmd_web(args) -> int:
 
 def cmd_tui(args) -> int:
     from prd_ai_battle.config import default_offline_config, load_config, load_runtime_config
-    from prd_ai_battle.projects import BOARD_DIR_NAME, ProjectHub
+    from prd_ai_battle.projects import BOARD_DIR_NAME, ProjectHub, peek_workspace_dir
     from prd_ai_battle.tui.app import BattleApp
 
-    workspace = str(args.workspace) if args.workspace else ".prd-ai-battle"
+    raw_ws = Path(args.workspace) if args.workspace else Path(".prd-ai-battle")
+    if args.workspace:
+        peeked = peek_workspace_dir(raw_ws)
+        if peeked is not None:
+            raw_ws = peeked
+    workspace = str(raw_ws)
     if args.offline:
         if args.config:
             cfg = load_config(args.config, offline=True)
@@ -289,7 +294,12 @@ def cmd_tui(args) -> int:
         if args.workspace:
             cfg.workspace = workspace
     home = Path(workspace).resolve() / BOARD_DIR_NAME
-    hub = ProjectHub.open(home, seed_config=cfg, search_root=Path.cwd())
+    hub = ProjectHub.open(
+        home,
+        seed_config=cfg,
+        search_root=None if args.workspace else Path.cwd(),
+        explicit_workspace=bool(args.workspace),
+    )
     app = BattleApp(cfg, hub=hub, requirement=args.requirement)
     app.run()
     return 0

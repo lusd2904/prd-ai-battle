@@ -25,7 +25,16 @@ impl WriteCheckRequest {
 
 /// argv for `prd-ai-battle write-check`. The Mac app does not write the file.
 pub fn write_check_argv(bin: &Path, req: &WriteCheckRequest) -> Vec<String> {
-    vec![
+    write_check_argv_for(bin, req, None)
+}
+
+/// Same as [`write_check_argv`], scoped to the chosen workspace when known.
+pub fn write_check_argv_for(
+    bin: &Path,
+    req: &WriteCheckRequest,
+    workspace: Option<&Path>,
+) -> Vec<String> {
+    let mut argv = vec![
         bin.display().to_string(),
         "write-check".to_string(),
         "--actor".to_string(),
@@ -34,11 +43,19 @@ pub fn write_check_argv(bin: &Path, req: &WriteCheckRequest) -> Vec<String> {
         req.tool.clone(),
         "--path".to_string(),
         req.path.clone(),
-    ]
+    ];
+    if let Some(ws) = workspace {
+        argv.push("--workspace".to_string());
+        argv.push(ws.display().to_string());
+    }
+    argv
 }
 
 /// Spawn the Python write-check. Never persists a draft from this process.
-pub fn run_write_check(bin: &Path, req: &WriteCheckRequest) -> std::io::Result<std::process::Output> {
+pub fn run_write_check(
+    bin: &Path,
+    req: &WriteCheckRequest,
+) -> std::io::Result<std::process::Output> {
     let argv = write_check_argv(bin, req);
     let mut cmd = Command::new(&argv[0]);
     cmd.args(&argv[1..]);
@@ -74,12 +91,15 @@ mod tests {
         assert_eq!(argv[1], "write-check");
         assert!(argv.contains(&"--actor".to_string()));
         assert!(argv.contains(&"primary".to_string()));
-        assert!(!argv.iter().any(|a| a == "write-file" && argv[1] != "write-check"));
+        assert!(!argv
+            .iter()
+            .any(|a| a == "write-file" && argv[1] != "write-check"));
     }
 
     #[test]
     fn in_process_draft_write_is_refused() {
-        let err = refuse_in_process_draft_write(Path::new(".prd-ai-battle/drafts/v1/response.md")).unwrap_err();
+        let err = refuse_in_process_draft_write(Path::new(".prd-ai-battle/drafts/v1/response.md"))
+            .unwrap_err();
         assert!(err.contains("write-check"));
         assert!(refuse_in_process_draft_write(Path::new("README.md")).is_ok());
     }
@@ -90,5 +110,19 @@ mod tests {
         let argv = write_check_argv(Path::new("prd-ai-battle"), &req);
         assert_eq!(argv[1], "write-check");
         assert!(argv.contains(&"advisor-sonnet".to_string()));
+    }
+
+    #[test]
+    fn write_check_argv_includes_chosen_workspace() {
+        let req = WriteCheckRequest::new("primary", "write", "drafts/v1/response.md");
+        let ws = Path::new("/tmp/round-matrix");
+        let argv = write_check_argv_for(Path::new("prd-ai-battle"), &req, Some(ws));
+        assert!(argv
+            .windows(2)
+            .any(|w| w[0] == "--workspace" && w[1] == ws.display().to_string()));
+        assert!(crate::workspace::write_escapes_workspace(
+            "/tmp/other-project/drafts/v1/response.md",
+            ws
+        ));
     }
 }

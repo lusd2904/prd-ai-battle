@@ -20,6 +20,7 @@ from prd_ai_battle.llm import MockChatClient
 from prd_ai_battle.models import ChatMessage, ComplianceMatrix, MatrixRow, Phase, SessionState
 from prd_ai_battle.projects import (
     DEFAULT_PROJECT_NAME,
+    NEW_PROJECT_PREFIX,
     ProjectHub,
     is_empty_d01_stub,
     is_leftover_tender_fixture,
@@ -312,6 +313,47 @@ def test_open_creates_clean_project_when_only_leftover_fixture(tmp_path: Path):
         if is_leftover_tender_fixture(peek_workspace_state(p.workspace_path), p.workspace_path)
     ]
     assert leftovers
+
+
+def test_explicit_workspace_opens_chosen_not_new_project(tmp_path: Path):
+    leftover = tmp_path / "ws-leftover"
+    sess_l = Session(default_offline_config(str(leftover)), root=leftover)
+    sess_l.load_sample()
+    sess_l.persist()
+    assert is_leftover_tender_fixture(sess_l.state, leftover)
+
+    chosen = tmp_path / "round-matrix" / ".prd-ai-battle"
+    sess_r = Session(default_offline_config(str(chosen)), root=chosen)
+    sess_r.load_sample()
+    sess_r.seed_matrix_offline()
+    sess_r.lock_matrix()
+    hub = ProjectHub.open(
+        tmp_path / "board",
+        seed_config=default_offline_config(str(chosen)),
+        offline=True,
+        search_root=None,
+        explicit_workspace=True,
+    )
+    assert Path(hub.active_record().workspace).resolve() == chosen.resolve()
+    assert hub.active_record().name == "round-matrix"
+    assert hub.active_session().state.phase is Phase.LOCKED
+    assert not any(p.name.startswith(NEW_PROJECT_PREFIX) for p in hub.iter_projects())
+
+
+def test_explicit_leftover_does_not_spawn_new_project(tmp_path: Path):
+    leftover = tmp_path / "ws-leftover"
+    sess_l = Session(default_offline_config(str(leftover)), root=leftover)
+    sess_l.load_sample()
+    sess_l.persist()
+    hub = ProjectHub.open(
+        tmp_path / "board-explicit",
+        seed_config=default_offline_config(str(leftover)),
+        offline=True,
+        explicit_workspace=True,
+    )
+    assert len(hub.iter_projects()) == 1
+    assert Path(hub.active_record().workspace).resolve() == leftover.resolve()
+    assert not any(p.name.startswith(NEW_PROJECT_PREFIX) for p in hub.iter_projects())
 
 
 def test_fresh_hub_reloads_catalog_from_disk(tmp_path: Path):

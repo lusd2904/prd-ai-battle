@@ -55,3 +55,17 @@ def test_no_secrets_in_crate():
     assert "sk-" not in text
     assert "PRD_SFP_XIXI_KEY=" not in text
     assert "Bearer " not in text
+
+
+def test_crate_picks_folder_before_pty():
+    text = _crate_text()
+    assert "选择工作区" in text
+    assert "resolve_workspace" in text
+    assert "NSOpenPanel" in text or "rfd" in text
+    assert "--workspace" in (CRATE / "src" / "main.rs").read_text(encoding="utf-8")
+    assert "pick_workspace_folder" in text
+    main = (CRATE / "src" / "main.rs").read_text(encoding="utf-8")
+    assert main.index("pick_workspace_folder") < main.index("run_pty")
+    cargo = (CRATE / "Cargo.toml").read_text(encoding="utf-8")
+    assert "target_os = \"macos\"" in cargo
+    assert "rfd" in cargo
