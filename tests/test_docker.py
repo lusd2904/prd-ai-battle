@@ -62,6 +62,10 @@ def test_compose_tty_stdin_extra_hosts_optional_env_and_host_yaml():
     assert "sk-" not in raw
     assert "prd-ai-battle.yaml" in raw  # documented / linked if present
     assert "host.docker.internal" in raw
+    assert "8080" not in raw
+    assert "0.0.0.0" not in raw
+    assert "1780" in raw
+    assert "ports:" not in raw
 
 
 def test_entrypoint_links_host_yaml_and_keeps_offline_discuss_explicit():
@@ -87,3 +91,6 @@ def test_readme_documents_compose_run_env_and_http_speakers():
     assert "live execute" in text.lower() or "不声称 live execute" in text
     assert "prd-ai-battle.env" in text
     assert "cloud-host" in text.lower() or "云部署" in text
+    assert "127.0.0.1:1780" in text
+    assert "cargo run" in text
+    assert "8080" not in text or "never 8080" in text.lower() or "绝不" in text or "never" in text.lower()

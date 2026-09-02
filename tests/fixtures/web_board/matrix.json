@@ -1,0 +1,26 @@
+{
+  "title": "响应对照表",
+  "locked": true,
+  "locked_at": "2026-09-02T12:10:00+00:00",
+  "version": 1,
+  "rows": [
+    {
+      "clause_id": "S01",
+      "clause": "时延≤20ms",
+      "responded": "yes",
+      "evidence_page": "12",
+      "opinion": "承诺专线 SLA",
+      "status": "locked",
+      "category": "requirement"
+    },
+    {
+      "clause_id": "S02",
+      "clause": "等保三级",
+      "responded": "partial",
+      "evidence_page": "18",
+      "opinion": "补齐测评计划",
+      "status": "locked",
+      "category": "requirement"
+    }
+  ]
+}

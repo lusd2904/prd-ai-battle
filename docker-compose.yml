@@ -1,10 +1,16 @@
 # Local Docker delivery for the Chinese board. Not a cloud-host deploy.
 #
-# Play the board (interactive TTY — this is the product):
+# Visual window on a Mac: crates/prd-board-macos (PTY around this TUI).
+#   cd crates/prd-board-macos && cargo run
+# That prefers host .venv/bin/prd-ai-battle, else this compose run.
+#
+# Play the TUI (interactive TTY — this is the product board):
 #   docker compose build && docker compose run --rm prd-ai-battle
 #
 # Do not `docker compose up -d`. The board is not a daemon; Desktop will
 # show prd-ai-battle:local with no running container after a detached up.
+# Do not publish a wildcard HTTP port. Do not touch 金融台 containers.
+# Optional host-only 对照表: `prd-ai-battle web` → http://127.0.0.1:1780
 #
 # Linux container talks HTTP only (seed: xixi / OpenRouter).
 # Mac CLI binaries (codex / claude / grok / agy) stay on the HOST unless

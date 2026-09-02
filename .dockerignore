@@ -31,3 +31,5 @@ config.yaml
 # Dev-only
 tests
 .cursor
+crates
+target
