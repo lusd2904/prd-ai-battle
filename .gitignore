@@ -13,6 +13,7 @@ build/
 .mypy_cache/
 .coverage
 htmlcov/
+uv.lock
 
 # runtime workspaces
 .prd-ai-battle/

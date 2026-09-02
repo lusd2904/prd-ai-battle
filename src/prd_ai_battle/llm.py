@@ -43,8 +43,28 @@ class _RetryableHTTP(LLMError):
 class ChatClient:
     """Minimal Chat Completions wrapper. One HTTP stream per model."""
 
-    def __init__(self, timeout: float = 120.0) -> None:
+    def __init__(self, timeout: float = 120.0, client: httpx.AsyncClient | None = None) -> None:
         self.timeout = timeout
+        self._shared_client = client
+        self._own_client = client is None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        if self._shared_client is None or self._shared_client.is_closed:
+            self._shared_client = httpx.AsyncClient(timeout=self.timeout)
+            self._own_client = True
+        return self._shared_client
+
+    async def aclose(self) -> None:
+        if self._own_client and self._shared_client is not None and not self._shared_client.is_closed:
+            await self._shared_client.aclose()
+            self._shared_client = None
+
+    async def __aenter__(self) -> ChatClient:
+        await self._get_client()
+        return self
+
+    async def __aexit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
+        await self.aclose()
 
     async def stream_chat(
         self,
@@ -105,8 +125,8 @@ class ChatClient:
         *,
         extra_secrets: list[str],
     ) -> AsyncIterator[str]:
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            async with client.stream("POST", url, headers=headers, json=payload) as resp:
+        client = await self._get_client()
+        async with client.stream("POST", url, headers=headers, json=payload) as resp:
                 if should_retry_status(resp.status_code):
                     body = (await resp.aread()).decode("utf-8", errors="replace")
                     raise _RetryableHTTP(
@@ -355,44 +375,67 @@ async def stream_parallel(
                 finished += 1
             yield event
 
-    while finished < pending:
-        if cancel is not None and cancel.is_set():
-            for task in tasks:
-                if not task.done():
-                    task.cancel()
-            async for event in _drain_rest():
-                yield event
-            break
-        if cancel is None:
-            event = await queue.get()
-        else:
-            getter = asyncio.create_task(queue.get())
-            stopper = asyncio.create_task(cancel.wait())
-            done, leftover = await asyncio.wait(
-                {getter, stopper}, return_when=asyncio.FIRST_COMPLETED
-            )
-            for leftover_task in leftover:
-                leftover_task.cancel()
-            if stopper in done and cancel.is_set():
+    stopper: asyncio.Task[bool] | None = (
+        asyncio.create_task(cancel.wait()) if cancel is not None else None
+    )
+    getter: asyncio.Task[StreamDelta | None] | None = None
+
+    try:
+        while finished < pending:
+            if cancel is not None and cancel.is_set():
                 for task in tasks:
                     if not task.done():
                         task.cancel()
-                if getter.done() and not getter.cancelled():
-                    event = getter.result()
-                    if event is not None:
-                        if event.done:
-                            finished += 1
-                        yield event
-                async for drained in _drain_rest():
-                    yield drained
+                async for event in _drain_rest():
+                    yield event
                 break
-            event = getter.result()
-        if event is None:
-            continue
-        if event.done:
-            finished += 1
-        yield event
-    await asyncio.gather(*tasks, return_exceptions=True)
+
+            if stopper is None:
+                event = await queue.get()
+            else:
+                if getter is None:
+                    getter = asyncio.create_task(queue.get())
+                done, _ = await asyncio.wait(
+                    {getter, stopper}, return_when=asyncio.FIRST_COMPLETED
+                )
+                if stopper in done and cancel.is_set():
+                    for task in tasks:
+                        if not task.done():
+                            task.cancel()
+                    if getter.done() and not getter.cancelled():
+                        event = getter.result()
+                        if event is not None:
+                            if event.done:
+                                finished += 1
+                            yield event
+                    async for drained in _drain_rest():
+                        yield drained
+                    break
+                event = getter.result()
+                getter = None
+
+            if event is None:
+                continue
+            if event.done:
+                finished += 1
+            yield event
+    finally:
+        if stopper is not None and not stopper.done():
+            stopper.cancel()
+            try:
+                await stopper
+            except (asyncio.CancelledError, Exception):
+                pass
+        if getter is not None and not getter.done():
+            getter.cancel()
+            try:
+                await getter
+            except (asyncio.CancelledError, Exception):
+                pass
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 def transcript_to_openai(messages: list[ChatMessage]) -> list[dict[str, str]]:

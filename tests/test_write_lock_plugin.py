@@ -18,12 +18,21 @@ def test_plugin_harness_fail_closed():
     if node is None:
         pytest.skip("node is required to exercise write-lock.js")
     result = subprocess.run(
-        [node, "--experimental-default-type=module", str(HARNESS)],
+        [node, str(HARNESS)],
         cwd=ROOT,
         capture_output=True,
         text=True,
         check=False,
     )
+    if result.returncode != 0 and "--experimental-default-type=module" not in result.stderr:
+        # Fallback for legacy node configurations if needed
+        result = subprocess.run(
+            [node, "--experimental-default-type=module", str(HARNESS)],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
     assert result.returncode == 0, result.stdout + "\n" + result.stderr
     assert "ok" in result.stdout
 
