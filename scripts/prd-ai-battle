@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Branded launcher: always go through Python so last-saved local yaml wins.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+export PRD_AI_ROOT="$ROOT"
+export PYTHONPATH="${ROOT}/src${PYTHONPATH:+:$PYTHONPATH}"
+export PRD_AI_PYTHON="${PRD_AI_PYTHON:-python3}"
+cd "$ROOT"
+exec "${PRD_AI_PYTHON}" -m prd_ai_battle launch "$@"

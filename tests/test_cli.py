@@ -15,7 +15,7 @@ def test_demo_accepts_workspace_after_subcommand(tmp_path: Path):
 
 
 def test_doctor_redacts_key(tmp_path: Path, capsys, monkeypatch):
-    monkeypatch.setenv("PRD_AI_GATEWAY_KEY", "super-secret")
+    monkeypatch.setenv("PRD_SFP_XIXI_KEY", "super-secret")
     cfg = tmp_path / "prd.yaml"
     cfg.write_text(Path("config.example.yaml").read_text(encoding="utf-8"), encoding="utf-8")
     args = build_parser().parse_args(["doctor", "--config", str(cfg), "--workspace", str(tmp_path)])
@@ -23,4 +23,14 @@ def test_doctor_redacts_key(tmp_path: Path, capsys, monkeypatch):
     out = capsys.readouterr().out
     assert "super-secret" not in out
     assert '"set"' in out
-    assert "127.0.0.1" in out
+    assert "xixiapi.io" in out
+
+
+def test_launch_without_opencode_prints_mac_install_hint(monkeypatch, capsys):
+    from prd_ai_battle.launch import launch_opencode
+
+    monkeypatch.setattr("prd_ai_battle.launch.find_opencode", lambda: None)
+    assert launch_opencode() == 1
+    err = capsys.readouterr().err
+    assert "brew install anomalyco/tap/opencode" in err
+    assert "prd-ai-battle --offline" in err

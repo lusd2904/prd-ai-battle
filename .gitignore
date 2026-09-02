@@ -16,3 +16,18 @@ htmlcov/
 .prd-ai-battle/
 workspace/
 *.screenshot.svg
+
+# Local Mac config (last-saved). Seed is config.example.yaml.
+prd-ai-battle.yaml
+prd-ai-battle.env
+prd-ai-battle.opencode.json
+config.yaml
+.env
+.env.local
+
+# OpenCode local install debris (the overlay itself is tracked)
+.opencode/node_modules/
+.opencode/package-lock.json
+.opencode/bun.lock
+.opencode/bun.lockb
+

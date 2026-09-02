@@ -1,31 +1,35 @@
-# Local multi-key gateway (OpenAI-compatible Chat Completions).
-# Copy to prd-ai-battle.yaml (or pass --config).
+# SEED defaults only (finance-platform snapshot). Copy to gitignored
+# prd-ai-battle.yaml via `prd-ai-battle init` / first launch, then change
+# primary, advisors, base_url, and keys. Next launch reads the local yaml,
+# not this file.
 #
-# base_url and api_key come from this file and/or env vars.
-# The checked-in default is the loopback gateway — never a vendor host.
-# An optional external tunnel belongs only in YOUR yaml/env, not in this repo.
+# Keys are NEVER stored in git. `prd-ai-battle config set --primary-key …`
+# writes them to gitignored prd-ai-battle.env (loaded into the environment).
+
 
 workspace: .prd-ai-battle
-offline: false   # true = mock models, no network
+offline: false
 
+# Optional backup (currently may 429 on credits). Primary/advisors override below.
 gateway:
-  base_url: ${PRD_AI_GATEWAY_URL:-http://127.0.0.1:4000/v1}
+  base_url: ${PRD_AI_GATEWAY_URL:-http://127.0.0.1:8000/v1}
   api_key: ${PRD_AI_GATEWAY_KEY:-}
 
 primary:
   id: primary
-  model: gpt-4o          # id your local gateway understands
+  model: claude-opus-5
+  base_url: https://xixiapi.io/v1
+  api_key_env: PRD_SFP_XIXI_KEY
   temperature: 0.3
-  # inherit gateway.base_url + gateway.api_key
-  # override per model if needed:
-  # base_url: ${PRD_AI_GATEWAY_URL:-http://127.0.0.1:4000/v1}
-  # api_key: ${PRD_AI_GATEWAY_KEY:-}
-  # api_key_env: MY_OTHER_KEY
 
 advisors:
-  - id: advisor-a
-    model: gpt-4o-mini
+  - id: advisor-sonnet
+    model: claude-sonnet-5
+    base_url: https://xixiapi.io/v1
+    api_key_env: PRD_SFP_XIXI_KEY
     temperature: 0.5
-  - id: advisor-b
-    model: deepseek-chat
+  - id: advisor-grok
+    model: x-ai/grok-4.6
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: PRD_SFP_OPENROUTER_KEY
     temperature: 0.5

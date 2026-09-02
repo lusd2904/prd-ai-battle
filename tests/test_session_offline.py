@@ -72,4 +72,4 @@ def test_load_example_config(tmp_path: Path, monkeypatch):
     cfg = load_config(src, offline=True)
     assert cfg.primary.id == "primary"
     assert cfg.advisors
-    assert cfg.primary.resolved_base_url(cfg.gateway) == "http://127.0.0.1:4000/v1"
+    assert cfg.primary.resolved_base_url(cfg.gateway) == "https://xixiapi.io/v1"

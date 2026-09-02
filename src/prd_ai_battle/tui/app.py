@@ -152,7 +152,7 @@ class BattleApp(App[None]):
             f"```\n\n"
             "Advisors always receive `tools: []`.\n"
             "Review input is **brief + matrix + chapter_diff** only.\n"
-            "Gateway host comes from config/env — never a hardcoded vendor domain."
+            "Keys come from env (`PRD_SFP_XIXI_KEY`, `PRD_SFP_OPENROUTER_KEY`) — never from git."
         )
         self.query_one("#state", Markdown).update(md)
 
