@@ -99,6 +99,21 @@ def test_phase_ingest_pdf(tmp_path: Path):
     assert "%PDF" not in payload["brief_markdown"]
 
 
+def test_phase_ingest_vpn_brief_can_lock(tmp_path: Path):
+    fixture = Path(__file__).resolve().parent / "fixtures" / "vpn_latency_brief.md"
+    session = load_session(workspace=tmp_path / "ws", offline=True)
+    payload = cmd_ingest(session, fixture)
+    assert payload["phase"] == Phase.DISCUSS.value
+    rows = session.state.matrix.rows
+    assert len(rows) >= 3
+    joined = "\n".join(row.clause for row in rows)
+    assert "必须" in joined and "可选" in joined and "风险" in joined
+    assert all(row.clause.strip() != "(none)" for row in rows)
+    locked = cmd_lock(session)
+    assert locked["phase"] == Phase.LOCKED.value
+    assert locked["matrix_locked"] is True
+
+
 def test_cli_write_check_denies_unknown_actor(tmp_path: Path, capsys):
     session = load_session(workspace=tmp_path, offline=True)
     cmd_discuss(session)

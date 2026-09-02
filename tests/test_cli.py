@@ -65,6 +65,25 @@ def test_ingest_markdown_cli(tmp_path: Path, capsys):
     assert '"phase": "discuss"' in out
 
 
+def test_ingest_vpn_brief_cli_seeds_real_matrix_rows(tmp_path: Path, capsys):
+    fixture = Path(__file__).resolve().parent / "fixtures" / "vpn_latency_brief.md"
+    args = build_parser().parse_args(
+        ["ingest", str(fixture), "--workspace", str(tmp_path / "ws"), "--offline"]
+    )
+    assert cmd_ingest(args) == 0
+    out = capsys.readouterr().out
+    assert '"parser": "markdown"' in out
+    assert "必须" in out
+    assert "可选" in out
+    assert "风险" in out
+    ws = tmp_path / "ws"
+    matrix_text = (ws / "matrix.json").read_text(encoding="utf-8")
+    assert "(none)" not in matrix_text
+    assert "必须" in matrix_text
+    assert "可选" in matrix_text
+    assert "风险" in matrix_text
+
+
 def test_launch_without_opencode_prints_engine_hint(monkeypatch, capsys):
     from prd_ai_battle.launch import launch_opencode
 
