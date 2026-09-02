@@ -52,7 +52,7 @@ Seed team stays xixi Opus / Sonnet + OpenRouter Grok until you `config set` a sp
 | Transport | yaml | What runs |
 | --- | --- | --- |
 | `http` | `base_url` + `api_key_env` | OpenAI-compatible Chat Completions (timeouts, 429/5xx retry, redacted errors) |
-| `cli` | `transport: cli` + `command:` | Mac-local binary on `PATH` |
+| `cli` | `transport: cli` + `command:` | Mac-local binary on `PATH`. Tokens stream into the shared discuss timeline as the CLI writes stdout (JSONL when the tool supports it). Timeout/cancel kills the process group. |
 
 | Speaker | `command` / binaries | HTTP key env (names only) | Notes |
 | --- | --- | --- | --- |

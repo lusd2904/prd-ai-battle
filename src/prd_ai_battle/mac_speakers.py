@@ -73,6 +73,8 @@ class CliPreset:
     default_model: str = ""
     key_envs: tuple[str, ...] = ()
     fallback_note: str = ""
+    stream_args: tuple[str, ...] = ()
+    stream_format: str = "text"  # "jsonl" extracts tokens; "text" yields raw chunks
 
 
 @dataclass
@@ -123,6 +125,8 @@ CLI_PRESETS: dict[str, CliPreset] = {
         default_model=CODEX_MODELS[0],
         key_envs=(CODEX_KEY_ENV, CODEX_KEY_ENV_ALT),
         fallback_note="Subscription/CLI login: `codex login` or `opencode auth` /connect OpenAI (ChatGPT).",
+        stream_args=("--json",),
+        stream_format="jsonl",
     ),
     "claude": CliPreset(
         name="claude",
@@ -132,6 +136,8 @@ CLI_PRESETS: dict[str, CliPreset] = {
         default_model=CLAUDE_CODE_MODELS[0],
         key_envs=(CLAUDE_CODE_KEY_ENV, CLAUDE_CODE_KEY_ENV_ALT),
         fallback_note="Claude Code CLI on Mac (`claude -p`). Distinct from HTTP xixi Claude.",
+        stream_args=("--output-format", "stream-json"),
+        stream_format="jsonl",
     ),
     "claude-code": CliPreset(
         name="claude-code",
@@ -141,6 +147,8 @@ CLI_PRESETS: dict[str, CliPreset] = {
         default_model=CLAUDE_CODE_MODELS[0],
         key_envs=(CLAUDE_CODE_KEY_ENV, CLAUDE_CODE_KEY_ENV_ALT),
         fallback_note="Alias for the Claude Code CLI binary `claude`.",
+        stream_args=("--output-format", "stream-json"),
+        stream_format="jsonl",
     ),
     "antigravity": CliPreset(
         name="antigravity",
@@ -150,6 +158,8 @@ CLI_PRESETS: dict[str, CliPreset] = {
         default_model=GEMINI_MODELS[0],
         key_envs=(ANTIGRAVITY_KEY_ENV, GEMINI_KEY_ENV, GEMINI_KEY_ENV_ALT),
         fallback_note="反重力: prefer `agy` (Antigravity CLI), then `antigravity`, then Gemini CLI `gemini`.",
+        stream_args=("--output-format", "stream-json"),
+        stream_format="jsonl",
     ),
     "agy": CliPreset(
         name="agy",
@@ -159,6 +169,8 @@ CLI_PRESETS: dict[str, CliPreset] = {
         default_model=GEMINI_MODELS[0],
         key_envs=(ANTIGRAVITY_KEY_ENV, GEMINI_KEY_ENV, GEMINI_KEY_ENV_ALT),
         fallback_note="Antigravity CLI binary is `agy`.",
+        stream_args=("--output-format", "stream-json"),
+        stream_format="jsonl",
     ),
     "gemini": CliPreset(
         name="gemini",
@@ -168,6 +180,8 @@ CLI_PRESETS: dict[str, CliPreset] = {
         default_model=GEMINI_MODELS[0],
         key_envs=(GEMINI_KEY_ENV, GEMINI_KEY_ENV_ALT),
         fallback_note="Gemini CLI fallback when Antigravity (`agy`) is not installed.",
+        stream_args=("--output-format", "stream-json"),
+        stream_format="jsonl",
     ),
     "grok": CliPreset(
         name="grok",
@@ -177,6 +191,8 @@ CLI_PRESETS: dict[str, CliPreset] = {
         default_model=XAI_MODELS[0],
         key_envs=(XAI_KEY_ENV, XAI_KEY_ENV_ALT),
         fallback_note="Grok CLI (`grok -p`). Local HTTP tool path is grok2api at :8000 (prd-gateway).",
+        stream_args=("--output-format", "streaming-json"),
+        stream_format="jsonl",
     ),
 }
 

@@ -9,10 +9,12 @@ import pytest
 
 from prd_ai_battle.cli_transport import (
     chat_completions_shape,
+    decode_cli_jsonl,
     exec_argv,
     messages_to_prompt,
     probe_cli,
     run_cli_prompt,
+    stream_cli_process,
 )
 from prd_ai_battle.config import ModelConfig, load_config
 from prd_ai_battle.ping import ping_config, ping_targets
@@ -47,6 +49,11 @@ def test_exec_argv_presets():
     assert claude == ["/bin/claude", "-p", "hello"]
     grok = exec_argv("grok", "hello", binary_path="/bin/grok")
     assert grok[-1] == "hello"
+    streamed = exec_argv("claude", "hello", binary_path="/bin/claude", stream=True)
+    assert "--output-format" in streamed
+    assert "stream-json" in streamed
+    assert streamed[-1] == "hello"
+    assert "--json" in exec_argv("codex", "p", binary_path="/bin/codex", stream=True)
 
 
 def test_run_cli_prompt_missing_raises_filenotfound():
@@ -148,6 +155,169 @@ advisors:
         ct.probe_cli = orig  # type: ignore[method-assign]
     assert result.outcome == "cli_present"
     assert result.hard_fail is False
+
+
+def test_decode_cli_jsonl_extracts_tokens():
+    assert decode_cli_jsonl('{"delta":"Hello"}') == "Hello"
+    assert decode_cli_jsonl('{"message":{"content":[{"type":"text","text":"Hi"}]}}') == "Hi"
+    assert decode_cli_jsonl('data: {"text":"x"}') == "x"
+    assert decode_cli_jsonl("not-json") == ""
+    assert decode_cli_jsonl("data: [DONE]") == ""
+
+
+@pytest.mark.asyncio
+async def test_stream_yields_before_process_exits():
+    """Discuss must see tokens while the CLI is still running."""
+    script = (
+        "import sys, time\n"
+        "for part in ('one', 'two', 'three'):\n"
+        "    sys.stdout.write(part)\n"
+        "    sys.stdout.flush()\n"
+        "    time.sleep(0.05)\n"
+    )
+    seen: list[str] = []
+    agen = stream_cli_process(
+        [__import__("sys").executable, "-u", "-c", script],
+        timeout=5.0,
+        stream_format="text",
+    )
+    try:
+        async for token in agen:
+            seen.append(token)
+            if "".join(seen) == "one":
+                # First token arrived; process is still writing.
+                break
+    finally:
+        await agen.aclose()
+    assert "".join(seen).startswith("one")
+
+
+@pytest.mark.asyncio
+async def test_stream_jsonl_decodes_as_tokens():
+    script = (
+        "import sys, time, json\n"
+        "for text in ('Hel', 'lo'):\n"
+        "    sys.stdout.write(json.dumps({'delta': text}) + '\\n')\n"
+        "    sys.stdout.flush()\n"
+        "    time.sleep(0.02)\n"
+    )
+    tokens: list[str] = []
+    async for token in stream_cli_process(
+        [__import__("sys").executable, "-u", "-c", script],
+        timeout=5.0,
+        stream_format="jsonl",
+    ):
+        tokens.append(token)
+    assert tokens == ["Hel", "lo"]
+
+
+@pytest.mark.asyncio
+async def test_stream_timeout_kills_subprocess():
+    import os
+
+    script = "import time; time.sleep(30)"
+    proc_box: dict = {}
+
+    async def spawn(argv):
+        proc = await __import__("asyncio").create_subprocess_exec(
+            *argv,
+            stdout=__import__("asyncio").subprocess.PIPE,
+            stderr=__import__("asyncio").subprocess.PIPE,
+            start_new_session=True,
+        )
+        proc_box["proc"] = proc
+        return proc
+
+    with pytest.raises(RuntimeError, match="timed out"):
+        async for _ in stream_cli_process(
+            [__import__("sys").executable, "-c", script],
+            timeout=0.15,
+            stream_format="text",
+            spawn=spawn,
+        ):
+            pass
+    proc = proc_box["proc"]
+    await __import__("asyncio").wait_for(proc.wait(), timeout=2)
+    assert proc.returncode is not None
+    with pytest.raises(ProcessLookupError):
+        os.kill(proc.pid, 0)
+
+
+@pytest.mark.asyncio
+async def test_stream_cancel_kills_subprocess():
+    import asyncio
+    import os
+
+    script = "import time; time.sleep(30)"
+    proc_box: dict = {}
+
+    async def spawn(argv):
+        proc = await asyncio.create_subprocess_exec(
+            *argv,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            start_new_session=True,
+        )
+        proc_box["proc"] = proc
+        return proc
+
+    agen = stream_cli_process(
+        [__import__("sys").executable, "-c", script],
+        timeout=30.0,
+        stream_format="text",
+        spawn=spawn,
+    )
+    task = asyncio.create_task(agen.__anext__())
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    await agen.aclose()
+    proc = proc_box["proc"]
+    await asyncio.wait_for(proc.wait(), timeout=2)
+    assert proc.returncode is not None
+    with pytest.raises(ProcessLookupError):
+        os.kill(proc.pid, 0)
+
+
+@pytest.mark.asyncio
+async def test_stream_parallel_cli_does_not_block_http_sibling():
+    """HTTP speaker tokens must appear while a slow CLI is still running."""
+    from prd_ai_battle.config import ModelConfig
+    from prd_ai_battle.llm import ChatClient, stream_parallel
+
+    script = (
+        "import sys, time\n"
+        "time.sleep(0.2)\n"
+        "sys.stdout.write('cli-late')\n"
+        "sys.stdout.flush()\n"
+    )
+    cli = ModelConfig(id="advisor-cli", model="gpt-5-codex", transport="cli", command="codex")
+    http = ModelConfig(id="primary", model="mock", base_url="http://127.0.0.1:9/v1", api_key="k")
+
+    class Mixed(ChatClient):
+        async def stream_chat(self, model, messages, *, tools=None):
+            if model.is_cli():
+                async for token in stream_cli_process(
+                    [__import__("sys").executable, "-u", "-c", script],
+                    timeout=5.0,
+                    stream_format="text",
+                ):
+                    yield token
+                return
+            yield "http-fast"
+
+    order: list[str] = []
+    async for event in stream_parallel(
+        Mixed(),
+        [cli, http],
+        {cli.id: [{"role": "user", "content": "x"}], http.id: [{"role": "user", "content": "x"}]},
+        {cli.id: [], http.id: []},
+    ):
+        if event.text:
+            order.append(event.model_id)
+    assert order[0] == "primary"
+    assert "advisor-cli" in order
 
 
 def test_cli_model_skips_http_url():

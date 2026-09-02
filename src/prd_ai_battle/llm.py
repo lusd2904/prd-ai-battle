@@ -58,7 +58,7 @@ class ChatClient:
         Advisors must be called with tools=[] — that empty list is sent on the wire.
         """
         if model.is_cli():
-            async for token in _stream_cli(model, messages):
+            async for token in _stream_cli(model, messages, timeout=self.timeout):
                 yield token
             return
         key = model.resolved_key()
@@ -140,24 +140,30 @@ class ChatClient:
                         yield content
 
 
-async def _stream_cli(model: ModelConfig, messages: list[dict[str, str]]) -> AsyncIterator[str]:
-    """Yield stdout from a Mac-local CLI as a single (chunked) assistant reply."""
-    from prd_ai_battle.cli_transport import command_for_model, messages_to_prompt, run_cli_prompt
+async def _stream_cli(
+    model: ModelConfig,
+    messages: list[dict[str, str]],
+    *,
+    timeout: float = 120.0,
+) -> AsyncIterator[str]:
+    """Yield CLI tokens as they arrive so discuss does not wait for process exit."""
+    from prd_ai_battle.cli_transport import command_for_model, messages_to_prompt, stream_cli_prompt
 
     command = command_for_model(model)
     if not command:
         raise LLMError(f"Model {model.id} has transport=cli but no command")
     try:
-        text = await asyncio.to_thread(run_cli_prompt, command, messages_to_prompt(messages))
+        async for token in stream_cli_prompt(
+            command, messages_to_prompt(messages), timeout=timeout
+        ):
+            if token:
+                yield token
     except FileNotFoundError as exc:
         raise LLMError(f"Missing CLI for {model.id}: {exc}") from exc
+    except asyncio.CancelledError:
+        raise
     except Exception as exc:  # noqa: BLE001 — surface as stream error, don't crash siblings
         raise LLMError(redact(f"CLI {command!r} failed for {model.id}: {exc}")) from exc
-    step = 24
-    if not text:
-        return
-    for i in range(0, len(text), step):
-        yield text[i : i + step]
 
 
 class MockChatClient(ChatClient):
