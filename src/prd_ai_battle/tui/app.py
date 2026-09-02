@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 from textual import on, work
@@ -13,13 +14,23 @@ from textual.widgets import DataTable, Footer, Header, Input, Markdown, Static, 
 
 from prd_ai_battle.config import AppConfig
 from prd_ai_battle.llm import StreamDelta
-from prd_ai_battle.models import Phase, iso_now, speaker_label
+from prd_ai_battle.models import Phase, iso_now
 from prd_ai_battle.session import Session
 from prd_ai_battle.state import IllegalTransition
+from prd_ai_battle.tui.skin import (
+    TAB_BRIEF,
+    TAB_MATRIX,
+    TAB_REQUIREMENT,
+    TAB_STATE,
+    header_subtitle,
+    speaker_color,
+    speaker_css_class,
+    speaker_display_name,
+    status_line,
+)
 from prd_ai_battle.write_lock import WriteDenied
 
 CSS_PATH = Path(__file__).with_name("app.tcss")
-PHASE_ORDER = (Phase.DISCUSS, Phase.LOCKED, Phase.EXECUTE, Phase.REVIEW, Phase.REVISE)
 
 
 class StreamEvent(Message):
@@ -28,35 +39,66 @@ class StreamEvent(Message):
         self.event = event
 
 
-class Bubble(Static):
-    def __init__(self, model_id: str, ts: str | None = None) -> None:
+class Bubble(Vertical):
+    """One utterance on the shared discuss stream. Color follows yaml speaker id."""
+
+    DEFAULT_CSS = """
+    Bubble {
+        height: auto;
+    }
+    """
+
+    def __init__(
+        self,
+        model_id: str,
+        ts: str | None = None,
+        *,
+        primary_id: str = "primary",
+        advisor_ids: Sequence[str] = (),
+    ) -> None:
         self.model_id = model_id
         self.ts = ts or iso_now()
         self.body = ""
-        super().__init__(id=None)
-        klass = "model-primary" if model_id == "primary" else f"model-{model_id}"
-        if klass not in {"model-primary", "model-advisor-a", "model-advisor-b", "model-user"}:
-            klass = "model-advisor-a"
-        self.add_class("bubble", klass)
+        self.primary_id = primary_id
+        self.advisor_ids = tuple(advisor_ids)
+        self.display_name = speaker_display_name(model_id, primary_id=primary_id)
+        self.speaker_class = speaker_css_class(
+            model_id, primary_id=primary_id, advisor_ids=self.advisor_ids
+        )
+        self.accent = speaker_color(
+            model_id, primary_id=primary_id, advisor_ids=self.advisor_ids
+        )
+        super().__init__()
+        self.add_class("bubble", self.speaker_class)
+
+    def _header_text(self) -> str:
+        clock = self.ts[11:19] if len(self.ts) >= 19 else self.ts
+        return f"{self.display_name} · {clock}"
+
+    def compose(self) -> ComposeResult:
+        yield Static(self._header_text(), classes="bubble-header", markup=False)
+        yield Static(self.body, classes="bubble-body", markup=False)
 
     def append(self, text: str) -> None:
         self.body += text
-        self.update(f"[b]{speaker_label(self.model_id, self.ts)}[/b]\n{self.body}")
+        if self.is_mounted:
+            self.query_one(".bubble-header", Static).update(self._header_text())
+            self.query_one(".bubble-body", Static).update(self.body)
 
 
 class BattleApp(App[None]):
     CSS_PATH = CSS_PATH
     TITLE = "prd-ai-battle"
     BINDINGS = [
-        Binding("l", "load_sample", "Load sample", show=True),
-        Binding("d", "discuss", "Discuss", show=True),
-        Binding("c", "lock_matrix", "Lock", show=True),
-        Binding("e", "execute", "Execute", show=True),
-        Binding("r", "review", "Review", show=True),
-        Binding("v", "revise", "Revise", show=True),
-        Binding("slash", "focus_composer", "Prompt", show=True),
-        Binding("escape", "blur_composer", "Blur", show=False),
-        Binding("q", "quit", "Quit", show=True),
+        Binding("l", "load_sample", "载入样例", show=True),
+        Binding("d", "discuss", "讨论", show=True),
+        Binding("c", "lock_matrix", "锁定", show=True),
+        Binding("e", "execute", "执行", show=True),
+        Binding("r", "review", "审核", show=True),
+        Binding("v", "revise", "修订", show=True),
+        Binding("slash", "focus_composer", "输入", show=True),
+        Binding("escape", "blur_composer", "取消", show=False),
+        Binding("q", "quit", "退出", show=True),
     ]
 
     def __init__(
@@ -73,6 +115,7 @@ class BattleApp(App[None]):
         self._requirement_arg = requirement
         self._live: dict[str, Bubble] = {}
         self._busy = False
+        self.status_text = ""
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -80,18 +123,18 @@ class BattleApp(App[None]):
         with Horizontal(id="body"):
             with Vertical(id="left"):
                 with TabbedContent():
-                    with TabPane("Requirement", id="tab-req"):
+                    with TabPane(TAB_REQUIREMENT, id="tab-req"):
                         yield VerticalScroll(Markdown("", id="requirement"))
-                    with TabPane("Brief", id="tab-brief"):
+                    with TabPane(TAB_BRIEF, id="tab-brief"):
                         yield VerticalScroll(Markdown("", id="brief"))
-                    with TabPane("对照表", id="tab-matrix"):
+                    with TabPane(TAB_MATRIX, id="tab-matrix"):
                         yield DataTable(id="matrix", cursor_type="row")
-                    with TabPane("State", id="tab-state"):
+                    with TabPane(TAB_STATE, id="tab-state"):
                         yield VerticalScroll(Markdown("", id="state"))
             with Vertical(id="right"):
-                yield Static("Shared discuss — one chat, labeled speakers", id="chat-banner")
+                yield Static("共享讨论 — 一条时间线", id="chat-banner")
                 yield VerticalScroll(id="chat")
-        yield Input(placeholder="Optional discuss prompt — Enter to run a discuss round", id="composer")
+        yield Input(placeholder="讨论提示（可选）— 回车发起一轮讨论", id="composer")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -102,42 +145,40 @@ class BattleApp(App[None]):
             self._apply_requirement(self._requirement_arg)
         else:
             self.query_one("#requirement", Markdown).update(
-                "Press **L** to load the bundled 招标文件 sample, or pass `--requirement PATH`."
+                "按 **L** 载入内置招标文件，或传入 `--requirement PATH`。"
             )
         self.query_one("#composer", Input).can_focus = True
         self._replay_timeline()
         self.set_focus(table)
 
+    def _speaker_kwargs(self) -> dict[str, object]:
+        state = self.session.state
+        return {"primary_id": state.primary, "advisor_ids": tuple(state.advisors)}
+
+    def _make_bubble(self, model_id: str, ts: str | None = None) -> Bubble:
+        return Bubble(model_id, ts=ts, **self._speaker_kwargs())  # type: ignore[arg-type]
+
     def _replay_timeline(self) -> None:
         chat = self.query_one("#chat", VerticalScroll)
         for msg in self.session.load_timeline():
-            bubble = Bubble(msg.model_id, ts=msg.ts)
+            bubble = self._make_bubble(msg.model_id, ts=msg.ts)
             bubble.append(msg.content)
             chat.mount(bubble)
 
-    def _phase_rail(self) -> str:
-        current = self.session.state.phase
-        bits: list[str] = []
-        for phase in PHASE_ORDER:
-            label = phase.value
-            if phase is current:
-                bits.append(f"[bold #58a6ff]● {label}[/]")
-            else:
-                bits.append(f"[#8b949e]{label}[/]")
-        return "  →  ".join(bits)
-
     def _refresh_status(self) -> None:
         state = self.session.state
-        writable = state.allows_write(state.primary)
-        lock = "OPEN" if writable else "ON"
-        version = state.artifact_version or "—"
-        advisors = ", ".join(state.advisors) or "—"
-        self.query_one("#status", Static).update(
-            f"{self._phase_rail()}    primary [b]{state.primary}[/b]  "
-            f"advisors {advisors}  artifact_version [b]{version}[/b]  write_lock {lock}"
+        # Always surface phase, 对照表 lock, and who holds write_lock (primary.id).
+        self.status_text = status_line(
+            phase=state.phase,
+            matrix_locked=state.matrix.locked,
+            writer_id=state.primary,
         )
-        gw = self.session.config.gateway_host()
-        self.sub_title = f"{state.phase.value} · {version} · gw {gw} · write_lock {lock}"
+        self.query_one("#status", Static).update(self.status_text)
+        self.sub_title = header_subtitle(
+            phase=state.phase,
+            matrix_locked=state.matrix.locked,
+            writer_id=state.primary,
+        )
 
     def _refresh_state_tab(self) -> None:
         state = self.session.state
@@ -165,9 +206,9 @@ class BattleApp(App[None]):
         self.query_one("#state", Markdown).update(md)
 
     def _refresh_left(self) -> None:
-        req = self.session.requirement or "_No requirement loaded._"
+        req = self.session.requirement or "_尚无需求。_"
         self.query_one("#requirement", Markdown).update(req)
-        brief = self.session.brief.as_prompt_block() if self.session.brief else "_No brief._"
+        brief = self.session.brief.as_prompt_block() if self.session.brief else "_尚无摘要。_"
         self.query_one("#brief", Markdown).update(brief)
         table = self.query_one("#matrix", DataTable)
         table.clear()
@@ -189,11 +230,11 @@ class BattleApp(App[None]):
             self.session.seed_matrix_offline()
         self.session.enter_discuss()
         self._refresh_left()
-        self._user_note(f"Loaded {path.name}. phase=discuss. Models see the brief, not the raw tender.")
+        self._user_note(f"已载入 {path.name}。阶段=讨论。模型只看摘要，不看招标原文。")
 
     def _user_note(self, text: str) -> None:
         chat = self.query_one("#chat", VerticalScroll)
-        bubble = Bubble("user")
+        bubble = self._make_bubble("user")
         bubble.append(text)
         chat.mount(bubble)
         chat.scroll_end(animate=False)
@@ -205,7 +246,7 @@ class BattleApp(App[None]):
     @on(DataTable.RowSelected, "#matrix")
     def _cycle_matrix(self, event: DataTable.RowSelected) -> None:
         if self.session.matrix.locked:
-            self.notify("对照表 is locked (phase=locked+)", severity="warning")
+            self.notify("对照表已锁定（阶段=锁定及之后）", severity="warning")
             return
         row_key = event.row_key.value if event.row_key else None
         if not row_key:
@@ -233,16 +274,16 @@ class BattleApp(App[None]):
         from prd_ai_battle.ingest import bundled_sample_path
 
         self._apply_requirement(bundled_sample_path())
-        self.notify("Sample tender loaded — phase=discuss")
+        self.notify("已载入样例 — 阶段=讨论")
 
     def action_discuss(self, prompt: str | None = None) -> None:
         if self._busy:
-            self.notify("A stream is already running", severity="warning")
+            self.notify("正在生成，请稍候", severity="warning")
             return
         if not self.session.brief:
-            self.notify("Load a requirement first (L)", severity="warning")
+            self.notify("请先载入需求（L）", severity="warning")
             return
-        self._user_note(prompt or "Discuss — one shared timeline, yaml speakers, tools=[], no writes.")
+        self._user_note(prompt or "讨论 — 一条时间线，yaml 发言人，tools=[]，不写文件。")
         self._run_stream(self.session.discuss(prompt))
 
     def action_lock_matrix(self) -> None:
@@ -252,34 +293,35 @@ class BattleApp(App[None]):
             self.notify(str(exc), severity="error")
             return
         self._refresh_left()
-        self._user_note("phase=locked. write_lock still ON — press E to enter execute.")
-        self.notify("phase=locked")
+        writer = self.session.state.primary
+        self._user_note(f"阶段=锁定。写入仍由 {writer} 持有 — 按 E 进入执行。")
+        self.notify("阶段=锁定")
 
     def action_execute(self) -> None:
         if self._busy:
             return
         if self.session.state.phase not in {Phase.LOCKED, Phase.EXECUTE}:
-            self.notify("Execute is available after lock (C)", severity="warning")
+            self.notify("锁定（C）之后才能执行", severity="warning")
             return
-        self._user_note("phase=execute — primary may write. Advisors still have tools=[].")
+        self._user_note("阶段=执行 — 主笔可写。顾问仍是 tools=[]。")
         self._run_stream(self.session.execute_primary_stream(note="tui execute"), kind="execute")
 
     def action_review(self) -> None:
         if self._busy:
             return
         if not self.session.state.artifact_version:
-            self.notify("Primary must write a draft first (E)", severity="warning")
+            self.notify("主笔须先写出稿（E）", severity="warning")
             return
-        self._user_note("phase=review — advisors get brief + matrix + chapter_diff only.")
+        self._user_note("阶段=审核 — 顾问只看 摘要 + 对照表 + chapter_diff。")
         self._run_stream(self.session.review())
 
     def action_revise(self) -> None:
         if self._busy:
             return
         if self.session.state.phase not in {Phase.REVIEW, Phase.REVISE}:
-            self.notify("Revise is available after a review round", severity="warning")
+            self.notify("审核之后才能修订", severity="warning")
             return
-        self._user_note("phase=revise — primary writes the next artifact_version.")
+        self._user_note("阶段=修订 — 主笔写下一版 artifact_version。")
         self._run_stream(self.session.execute_primary_stream(note="tui revise"), kind="execute")
 
     def _run_stream(self, agen, *, kind: str = "chat") -> None:
@@ -303,7 +345,7 @@ class BattleApp(App[None]):
         chat = self.query_one("#chat", VerticalScroll)
         bubble = self._live.get(event.model_id)
         if bubble is None:
-            bubble = Bubble(event.model_id)
+            bubble = self._make_bubble(event.model_id)
             self._live[event.model_id] = bubble
             chat.mount(bubble)
         if event.text:

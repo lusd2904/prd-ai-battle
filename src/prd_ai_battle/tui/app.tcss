@@ -34,7 +34,7 @@ Footer {
     dock: top;
     height: 1;
     background: #21262d;
-    color: #d2a8ff;
+    color: #c9d1d9;
     padding: 0 1;
 }
 
@@ -58,50 +58,116 @@ TabbedContent {
 
 #chat {
     height: 1fr;
-    padding: 0 1;
+    padding: 0 1 1 1;
 }
 
 .bubble {
-    margin: 1 0 0 0;
+    height: auto;
+    margin: 1 1 0 0;
     padding: 0 1 1 1;
-    border: solid #30363d;
+    background: #161b22;
+    border: round #30363d;
 }
 
 .bubble-header {
     text-style: bold;
     color: #8b949e;
+    height: 1;
 }
 
-.model-primary {
-    border: solid #58a6ff;
+.bubble-body {
+    height: auto;
+    color: #e6edf3;
 }
 
-.model-primary .bubble-header {
+.speaker-user {
+    border: round #238636;
+    border-left: heavy #3fb950;
+}
+
+.speaker-user .bubble-header {
+    color: #3fb950;
+}
+
+.speaker-primary {
+    border: round #1f4e79;
+    border-left: heavy #58a6ff;
+}
+
+.speaker-primary .bubble-header {
     color: #58a6ff;
 }
 
-.model-advisor-a {
-    border: solid #d2a8ff;
+.speaker-0 {
+    border: round #5a3d7a;
+    border-left: heavy #d2a8ff;
 }
 
-.model-advisor-a .bubble-header {
+.speaker-0 .bubble-header {
     color: #d2a8ff;
 }
 
-.model-advisor-b {
-    border: solid #f2cc60;
+.speaker-1 {
+    border: round #6b5a1e;
+    border-left: heavy #f2cc60;
 }
 
-.model-advisor-b .bubble-header {
+.speaker-1 .bubble-header {
     color: #f2cc60;
 }
 
-.model-user {
-    border: solid #3fb950;
+.speaker-2 {
+    border: round #6e2f2c;
+    border-left: heavy #ff7b72;
 }
 
-.model-user .bubble-header {
-    color: #3fb950;
+.speaker-2 .bubble-header {
+    color: #ff7b72;
+}
+
+.speaker-3 {
+    border: round #16565a;
+    border-left: heavy #39d0d6;
+}
+
+.speaker-3 .bubble-header {
+    color: #39d0d6;
+}
+
+.speaker-4 {
+    border: round #6b3a58;
+    border-left: heavy #ff9bce;
+}
+
+.speaker-4 .bubble-header {
+    color: #ff9bce;
+}
+
+.speaker-5 {
+    border: round #2d5a32;
+    border-left: heavy #7ee787;
+}
+
+.speaker-5 .bubble-header {
+    color: #7ee787;
+}
+
+.speaker-6 {
+    border: round #6b4a24;
+    border-left: heavy #ffa657;
+}
+
+.speaker-6 .bubble-header {
+    color: #ffa657;
+}
+
+.speaker-7 {
+    border: round #2a4d6e;
+    border-left: heavy #a5d6ff;
+}
+
+.speaker-7 .bubble-header {
+    color: #a5d6ff;
 }
 
 #composer {
