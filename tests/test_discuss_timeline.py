@@ -120,6 +120,78 @@ def test_discuss_cli_prints_one_labeled_stream(tmp_path: Path, capsys):
     assert not (ws / "teammates").exists()
 
 
+def test_new_requirement_discuss_does_not_leak_old_transcript(tmp_path: Path, capsys):
+    """Leftover 招标 round0 bubbles must not prepend a new --requirement discuss."""
+    from prd_ai_battle.models import ChatMessage
+    from prd_ai_battle.phase import load_session
+
+    ws = tmp_path / "leftover"
+    session = load_session(workspace=ws, offline=True)
+    session.load_sample()
+    leftover = "LEFTOVER-TENDER-ROUND0-招标-UNIQUE"
+    session.store.append_message(
+        ChatMessage(model_id="advisor-a", role="assistant", phase=Phase.DISCUSS, content=leftover),
+        session.state,
+    )
+    session.persist()
+    assert leftover in session.render_timeline()
+    assert leftover in (ws / "transcript.jsonl").read_text(encoding="utf-8")
+
+    fresh = tmp_path / "fresh-brief.md"
+    fresh.write_text("# 新需求\n\n## 必须做\n- 只讨论这条新条款\n", encoding="utf-8")
+    args = build_parser().parse_args(
+        [
+            "discuss",
+            "--offline",
+            "--workspace",
+            str(ws),
+            "--requirement",
+            str(fresh),
+            "--prompt",
+            "fresh start",
+        ]
+    )
+    assert cmd_discuss_stream(args) == 0
+    out = capsys.readouterr().out
+    transcript = (ws / "transcript.jsonl").read_text(encoding="utf-8")
+    assert leftover not in out
+    assert leftover not in transcript
+    assert "招标-UNIQUE" not in out
+    assert "Shared discuss" in out
+
+
+def test_same_requirement_discuss_keeps_prior_utterances(tmp_path: Path, capsys):
+    """Follow-up discuss on the same --requirement is still one group-chat timeline."""
+    req = tmp_path / "same.md"
+    req.write_text("# 同一需求\n\n## 必须做\n- 等保\n", encoding="utf-8")
+    ws = tmp_path / "same-ws"
+    first = build_parser().parse_args(
+        ["discuss", "--offline", "--workspace", str(ws), "--requirement", str(req), "--prompt", "first D"]
+    )
+    assert cmd_discuss_stream(first) == 0
+    capsys.readouterr()
+    first_text = (ws / "transcript.jsonl").read_text(encoding="utf-8")
+    assert "first D" in first_text
+    second = build_parser().parse_args(
+        [
+            "discuss",
+            "--offline",
+            "--workspace",
+            str(ws),
+            "--requirement",
+            str(req),
+            "--prompt",
+            "follow-up keep-me",
+        ]
+    )
+    assert cmd_discuss_stream(second) == 0
+    out = capsys.readouterr().out
+    again = (ws / "transcript.jsonl").read_text(encoding="utf-8")
+    assert "first D" in again
+    assert "follow-up keep-me" in again
+    assert "first D" in out or "keep-me" in out
+
+
 def test_discuss_cli_json_has_speakers_from_yaml(tmp_path: Path, capsys):
     args = build_parser().parse_args(
         ["discuss", "--offline", "--json", "--workspace", str(tmp_path / "json")]

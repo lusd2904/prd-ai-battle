@@ -8,7 +8,13 @@ from pathlib import Path
 from typing import Any
 
 from prd_ai_battle.bridge import write_check
-from prd_ai_battle.config import AppConfig, default_offline_config, find_config, load_config
+from prd_ai_battle.config import (
+    AppConfig,
+    autoload_process_env,
+    default_offline_config,
+    find_config,
+    load_config,
+)
 from prd_ai_battle.ingest import bundled_sample_path
 from prd_ai_battle.models import Phase
 from prd_ai_battle.session import Session
@@ -22,6 +28,7 @@ def load_session(
     config_path: Path | None = None,
     offline: bool | None = None,
 ) -> Session:
+    autoload_process_env(workspace=workspace)
     if offline is True and config_path is None:
         cfg = default_offline_config(str(workspace or ".prd-ai-battle"))
     else:
@@ -97,8 +104,15 @@ def cmd_discuss(
     prompt: str | None = None,
     run: bool = True,
 ) -> dict[str, Any]:
-    if session.state.brief is None:
-        cmd_ingest(session, requirement)
+    if requirement is not None:
+        req_path = Path(requirement)
+        if session.state.brief is None or not session.same_requirement(req_path):
+            cmd_ingest(session, req_path)
+        else:
+            session.enter_discuss()
+            session.persist()
+    elif session.state.brief is None:
+        cmd_ingest(session, None)
     else:
         session.enter_discuss()
         session.persist()

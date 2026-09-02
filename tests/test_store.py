@@ -38,3 +38,18 @@ def test_transcript_append_fsyncs(tmp_path: Path, monkeypatch):
     lines = (tmp_path / "ws" / "transcript.jsonl").read_text(encoding="utf-8").strip().splitlines()
     assert len(lines) == 1
     assert "hello" in lines[0]
+
+
+def test_clear_timeline_drops_leftover_utterances(tmp_path: Path):
+    store = WorkspaceStore(tmp_path / "ws")
+    state = SessionState(primary="primary", advisors=["advisor-a"])
+    store.init(state)
+    store.append_message(
+        ChatMessage(model_id="advisor-a", phase=Phase.DISCUSS, content="old 招标 bubble"),
+        state,
+    )
+    assert store.load_transcript()
+    store.clear_timeline(state)
+    assert store.load_transcript() == []
+    assert state.timeline == []
+    assert store.transcript_path.read_text(encoding="utf-8") == ""
