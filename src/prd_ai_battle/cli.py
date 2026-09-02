@@ -263,7 +263,7 @@ def cmd_tui(args) -> int:
         if args.workspace:
             cfg.workspace = workspace
     home = Path(workspace).resolve() / BOARD_DIR_NAME
-    hub = ProjectHub.open(home, seed_config=cfg)
+    hub = ProjectHub.open(home, seed_config=cfg, search_root=Path.cwd())
     app = BattleApp(cfg, hub=hub, requirement=args.requirement)
     app.run()
     return 0

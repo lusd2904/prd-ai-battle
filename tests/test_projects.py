@@ -13,11 +13,20 @@ from prd_ai_battle.config import (
     GatewayConfig,
     LOCAL_GATEWAY_URL,
     ModelConfig,
+    default_offline_config,
     read_env_file,
 )
 from prd_ai_battle.llm import MockChatClient
-from prd_ai_battle.models import ChatMessage, Phase
-from prd_ai_battle.projects import DEFAULT_PROJECT_NAME, ProjectHub
+from prd_ai_battle.models import ChatMessage, ComplianceMatrix, MatrixRow, Phase, SessionState
+from prd_ai_battle.projects import (
+    DEFAULT_PROJECT_NAME,
+    ProjectHub,
+    is_empty_d01_stub,
+    is_leftover_tender_fixture,
+    is_locked_or_later,
+    peek_workspace_state,
+)
+from prd_ai_battle.session import Session
 from prd_ai_battle.write_lock import WriteDenied
 
 
@@ -231,6 +240,78 @@ def test_new_project_has_own_yaml_env_workspace(tmp_path: Path):
     assert "advisor-sonnet" not in yaml_text
     assert hub.is_mounted(rec.id)
     assert hub.active_id == rec.id
+
+
+def test_helpers_leftover_fixture_empty_d01_and_locked():
+    leftover = SessionState(
+        primary="primary",
+        advisors=["a"],
+        requirement_path="/app/src/prd_ai_battle/data/tender.md",
+    )
+    assert is_leftover_tender_fixture(leftover, Path("."))
+    empty = SessionState(
+        primary="primary",
+        advisors=["a"],
+        matrix=ComplianceMatrix(rows=[MatrixRow(clause_id="D01", clause="")]),
+    )
+    assert is_empty_d01_stub(empty)
+    assert is_empty_d01_stub(SessionState(primary="p", advisors=[]), name="D01")
+    assert not is_empty_d01_stub(SessionState(primary="p", advisors=[]))
+    locked = SessionState(primary="p", advisors=[], phase=Phase.LOCKED)
+    assert is_locked_or_later(locked)
+    assert not is_locked_or_later(SessionState(primary="p", advisors=[]))
+
+
+def test_open_prefers_last_locked_round_matrix_over_leftover_and_empty_d01(tmp_path: Path):
+    leftover = tmp_path / "ws-leftover"
+    sess_l = Session(default_offline_config(str(leftover)), root=leftover)
+    sess_l.load_sample()
+    sess_l.persist()
+    assert is_leftover_tender_fixture(sess_l.state, leftover)
+
+    d01 = tmp_path / "D01" / ".prd-ai-battle"
+    sess_d = Session(default_offline_config(str(d01)), root=d01)
+    sess_d.state.matrix = ComplianceMatrix(rows=[MatrixRow(clause_id="D01", clause="")])
+    sess_d.persist()
+
+    locked = tmp_path / "round-matrix" / ".prd-ai-battle"
+    sess_r = Session(default_offline_config(str(locked)), root=locked)
+    sess_r.load_sample()
+    sess_r.seed_matrix_offline()
+    sess_r.lock_matrix()
+    assert sess_r.state.phase is Phase.LOCKED
+
+    seed = default_offline_config(str(leftover))
+    hub = ProjectHub.open(
+        tmp_path / "board",
+        seed_config=seed,
+        offline=True,
+        search_root=tmp_path,
+    )
+    names = {p.name for p in hub.iter_projects()}
+    assert "round-matrix" in names
+    assert hub.active_record().name == "round-matrix"
+    assert hub.active_session().state.phase is Phase.LOCKED
+    assert hub.active_session().state.matrix.locked is True
+
+
+def test_open_creates_clean_project_when_only_leftover_fixture(tmp_path: Path):
+    leftover = tmp_path / "ws-leftover"
+    sess_l = Session(default_offline_config(str(leftover)), root=leftover)
+    sess_l.load_sample()
+    sess_l.persist()
+    seed = default_offline_config(str(leftover))
+    hub = ProjectHub.open(tmp_path / "board", seed_config=seed, offline=True)
+    active = hub.active_session()
+    assert not is_leftover_tender_fixture(active.state, hub.active_record().workspace_path)
+    assert active.state.brief is None
+    assert active.state.phase is Phase.DISCUSS
+    leftovers = [
+        p
+        for p in hub.iter_projects()
+        if is_leftover_tender_fixture(peek_workspace_state(p.workspace_path), p.workspace_path)
+    ]
+    assert leftovers
 
 
 def test_fresh_hub_reloads_catalog_from_disk(tmp_path: Path):

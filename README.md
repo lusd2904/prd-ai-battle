@@ -85,7 +85,7 @@ prd-ai-battle config set --advisor-id advisor-grok --transport cli --command gro
 | Lead | `primary` | `claude-opus-5` | `https://xixiapi.io/v1` | `PRD_SFP_XIXI_KEY` | Only in `execute` / `revise` |
 | Advisor | `advisor-sonnet` | `claude-sonnet-5` | `https://xixiapi.io/v1` | `PRD_SFP_XIXI_KEY` | Never (`edit`/`shell` deny, `tools=[]`) |
 | Advisor | `advisor-grok` | `x-ai/grok-4.6` | `https://openrouter.ai/api/v1` | `PRD_SFP_OPENROUTER_KEY` | Never |
-| Backup (optional) | `prd-gateway` | `grok-4.5` (also `grok-composer-2.5-fast`) | `http://127.0.0.1:8000/v1` | `PRD_AI_GATEWAY_KEY` | Never — grok2api, **not Claude**. 429 = reachable, quota empty; keep optional. |
+| Backup (optional) | `prd-gateway` | `grok-4.5` (also `grok-composer-2.5-fast`) | `http://127.0.0.1:8000/v1` (Mac host). In Docker: `http://host.docker.internal:8000/v1` via `PRD_AI_GATEWAY_URL` | `PRD_AI_GATEWAY_KEY` | Never — grok2api, **not Claude**. 429 = reachable, quota empty; keep optional. |
 
 ## Session contract
 
@@ -136,6 +136,53 @@ prd-ai-battle launch               # OpenCode 执行/修订引擎（可选）
 
 `prd-ai-battle` opens the board. Seed ids are `primary` + `advisor-sonnet` + `advisor-grok` until you change them. OpenCode is optional and used for `/execute` / `/revise` when you launch the engine.
 
+## Docker（本机看板，不是云部署）
+
+Docker 是本仓库的**本机交付面**：重建 `prd-ai-battle:local`，用交互式 TTY 打开中文看板。不要做 cloud-host / PaaS 部署。密钥只放在宿主机的 gitignored 文件里，**不要写进镜像或 git**。
+
+Desktop 里看到镜像过期、且没有正在运行的容器，是因为看板**不是后台服务**。请重建后再 `run`，不要 `docker compose up -d`：
+
+```bash
+docker compose build
+docker compose run --rm prd-ai-battle
+# 打开中文看板（默认 CMD 就是 prd-ai-battle / tui，不是 discuss --offline）
+```
+
+`run --rm` 退出后 Desktop 没有常驻容器是正常的。`prd-ai-battle:local` 过期时重新 `build`。
+
+Linux 容器只走 **HTTP**（seed：xixi / OpenRouter）。Mac 上的 CLI 发言人（`codex` / `claude` / `grok` / `agy`）只在**宿主机**上，除非你自己 bind-mount 二进制。**Docker = HTTP speakers；CLI 留在 Mac host。**
+
+宿主机 grok2api 等 `127.0.0.1` 网关，在容器内要写成 `host.docker.internal`（compose 已加 `extra_hosts`）。seed `config.example.yaml` 仍默认 `http://127.0.0.1:8000/v1`（给 Mac 本机），不要改成云主机：
+
+```bash
+export PRD_AI_GATEWAY_URL=http://host.docker.internal:8000/v1
+```
+
+密钥与本地 yaml（都 gitignored；compose 在文件存在时注入 / 挂载）：
+
+```bash
+cp prd-ai-battle.env.example prd-ai-battle.env   # 填值；勿提交
+# 已有 prd-ai-battle.yaml 时无需再做：entrypoint 从 /host 链接（若存在）
+docker compose run --rm prd-ai-battle
+# 或显式：
+# docker compose run --rm --env-file prd-ai-battle.env prd-ai-battle
+```
+
+离线交叉讨论是**显式命令**，不是默认 CMD：
+
+```bash
+docker compose run --rm prd-ai-battle discuss --offline
+```
+
+交付验收是 **execute / review**（离线可跑通阶段机；**不声称 live execute 已完成**）：
+
+```bash
+docker compose run --rm prd-ai-battle demo
+docker compose run --rm prd-ai-battle phase review --offline --workspace .prd-ai-battle
+```
+
+`/review` 在没有稿件或没有 `chapter_diff` 时会失败关闭，并给出中文错误，不会把空包发给顾问。
+
 Then (board keys or OpenCode slash commands):
 
 | Command | What happens |
@@ -146,7 +193,7 @@ Then (board keys or OpenCode slash commands):
 | `/review` | Advisors review **brief + matrix + chapter_diff** only |
 | `/revise` | `phase=revise` — primary writes the next version |
 
-Do not run this on a cloud VM.
+Do not run this on a cloud VM. Docker Desktop on the Mac is the local delivery surface, not a host deploy.
 
 ```bash
 prd-ai-battle init

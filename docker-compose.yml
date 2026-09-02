@@ -1,0 +1,56 @@
+# Local Docker delivery for the Chinese board. Not a cloud-host deploy.
+#
+# Play the board (interactive TTY — this is the product):
+#   docker compose build && docker compose run --rm prd-ai-battle
+#
+# Do not `docker compose up -d`. The board is not a daemon; Desktop will
+# show prd-ai-battle:local with no running container after a detached up.
+#
+# Linux container talks HTTP only (seed: xixi / OpenRouter).
+# Mac CLI binaries (codex / claude / grok / agy) stay on the HOST unless
+# you bind-mount them yourself. Docker = HTTP speakers; CLI stays on Mac.
+#
+# Host grok2api / other 127.0.0.1 gateways: from inside the container use
+#   PRD_AI_GATEWAY_URL=http://host.docker.internal:8000/v1
+# Seed yaml still defaults to http://127.0.0.1:8000/v1 on the Mac host.
+#
+# Secrets: gitignored prd-ai-battle.env / yaml on the host. Never in git,
+# never baked into the image. env_file is optional (required: false).
+# Host yaml is linked if present (see /host bind + docker-entrypoint.sh).
+#
+# Offline discuss is explicit, not the default CMD:
+#   docker compose run --rm prd-ai-battle discuss --offline
+#
+# Delivery test (offline execute → review). Does not claim live execute:
+#   docker compose run --rm prd-ai-battle demo
+
+services:
+  prd-ai-battle:
+    build: .
+    image: prd-ai-battle:local
+    stdin_open: true
+    tty: true
+    working_dir: /app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file:
+      - path: prd-ai-battle.env
+        required: false
+    environment:
+      TERM: xterm-256color
+      PRD_HOST_CONFIG: /host
+      # Optional host gateway (uncomment / export). Seed stays 127.0.0.1 on Mac.
+      # PRD_AI_GATEWAY_URL: http://host.docker.internal:8000/v1
+    volumes:
+      # Always-present host dir so gitignored yaml/env can be linked if present.
+      - type: bind
+        source: .
+        target: /host
+        read_only: true
+      # Persist the default workspace on the host (gitignored).
+      - type: bind
+        source: ./.prd-ai-battle
+        target: /app/.prd-ai-battle
+        bind:
+          create_host_path: true
+    command: ["prd-ai-battle"]
