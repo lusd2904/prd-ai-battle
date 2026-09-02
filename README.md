@@ -112,6 +112,34 @@ prd-ai-battle doctor        # resolved URLs; keys redacted as "set"/"missing"
 prd-ai-battle phase status
 ```
 
+## Ingest a 招标 PDF (Mac)
+
+Parse the tender **on your Mac**. The raw PDF is never sent to advisors. Pipeline:
+
+`PDF → local text (pypdf) → brief (目录 / 评分点 / 废标项) → 对照表 seed`
+
+```bash
+cd prd-ai-battle
+source .venv/bin/activate
+pip install -e ".[dev]"          # pulls pypdf
+
+# text-layer PDF exported from Word / 招标系统 (not a scanned image)
+prd-ai-battle ingest ~/Downloads/招标文件.pdf --workspace .prd-ai-battle
+
+# markdown still works
+prd-ai-battle ingest samples/tender.md --workspace .prd-ai-battle
+
+prd-ai-battle phase status --workspace .prd-ai-battle
+prd-ai-battle                 # then /discuss — models see the brief only
+```
+
+Notes:
+
+- This reads the PDF text layer locally. Image-only scans are not OCR'd.
+- Extracted text lands in `.prd-ai-battle/requirement.md`; the shared brief is `brief.md` / `brief.json`.
+- Discuss still shares the brief, not the file. Review is still **brief + matrix + chapter_diff** only.
+- `write_lock` is unchanged: advisors stay `tools=[]`; primary writes only in `execute` / `revise`.
+
 ## Optional Textual demo
 
 The old Python TUI is **not** the product shell. It remains as an offline demo:
@@ -149,7 +177,7 @@ src/prd_ai_battle/
   bridge.py        # write-check used by the OpenCode overlay
   phase.py         # slash-command backend
   launch.py        # exec OpenCode as this product
-  ingest.py        # brief extraction
+  ingest.py        # brief extraction (markdown + local PDF)
   store.py         # transcript + session.json
   llm.py           # OpenAI-compatible SSE; advisors get tools: []
   session.py       # orchestration (also used by --offline)

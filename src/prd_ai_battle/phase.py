@@ -49,12 +49,19 @@ def cmd_status(session: Session) -> dict[str, Any]:
 
 
 def cmd_ingest(session: Session, requirement: Path | None = None) -> dict[str, Any]:
-    path = requirement or bundled_sample_path()
+    path = Path(requirement) if requirement is not None else bundled_sample_path()
     session.load_requirement(path)
     if session.config.offline:
         session.seed_matrix_offline()
     session.enter_discuss()
-    return contract_payload(session)
+    payload = contract_payload(session)
+    suffix = path.suffix.lower()
+    payload["source_path"] = str(path)
+    payload["parser"] = "pypdf" if suffix == ".pdf" else "markdown"
+    payload["advisor_input"] = "brief"
+    payload["brief_markdown"] = session.state.brief.as_prompt_block() if session.state.brief else ""
+    payload["matrix_markdown"] = session.state.matrix.as_prompt_table()
+    return payload
 
 
 def cmd_discuss(session: Session, requirement: Path | None = None) -> dict[str, Any]:

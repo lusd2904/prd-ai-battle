@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from prd_ai_battle.cli import build_parser, cmd_demo, cmd_doctor
+from prd_ai_battle.cli import build_parser, cmd_demo, cmd_doctor, cmd_ingest
+from pdf_fixture import MINI_TENDER, write_text_pdf
 
 
 def test_demo_accepts_workspace_after_subcommand(tmp_path: Path):
@@ -24,6 +25,40 @@ def test_doctor_redacts_key(tmp_path: Path, capsys, monkeypatch):
     assert "super-secret" not in out
     assert '"set"' in out
     assert "xixiapi.io" in out
+
+
+def test_ingest_pdf_cli_seeds_brief_and_matrix(tmp_path: Path, capsys):
+    pdf = write_text_pdf(tmp_path / "tender.pdf", MINI_TENDER)
+    args = build_parser().parse_args(
+        ["ingest", str(pdf), "--workspace", str(tmp_path / "ws"), "--offline"]
+    )
+    assert args.command == "ingest"
+    assert cmd_ingest(args) == 0
+    out = capsys.readouterr().out
+    assert '"phase": "discuss"' in out
+    assert '"parser": "pypdf"' in out
+    assert '"advisor_input": "brief"' in out
+    assert "政务云" in out
+    assert "%PDF" not in out
+    ws = tmp_path / "ws"
+    assert (ws / "brief.json").is_file()
+    assert (ws / "brief.md").is_file()
+    assert (ws / "matrix.json").is_file()
+    requirement = (ws / "requirement.md").read_text(encoding="utf-8")
+    assert "类似业绩" in requirement
+    assert requirement.lstrip().startswith("%PDF") is False
+
+
+def test_ingest_markdown_cli(tmp_path: Path, capsys):
+    md = tmp_path / "tender.md"
+    md.write_text(MINI_TENDER, encoding="utf-8")
+    args = build_parser().parse_args(
+        ["ingest", str(md), "--workspace", str(tmp_path / "ws"), "--offline"]
+    )
+    assert cmd_ingest(args) == 0
+    out = capsys.readouterr().out
+    assert '"parser": "markdown"' in out
+    assert '"phase": "discuss"' in out
 
 
 def test_launch_without_opencode_prints_mac_install_hint(monkeypatch, capsys):
