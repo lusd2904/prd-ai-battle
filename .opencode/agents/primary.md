@@ -22,6 +22,6 @@ Rules:
 - Advisors (yaml `advisors[]`) always have tools=[] — they cannot edit or run shell.
 - During discuss and review, present the Python orchestrator's **one shared timeline** (labeled `[agent-id · timestamp]`). Do **not** spawn OpenCode subagents / teammates / sidecar panes.
 - Review-phase input is only brief + matrix + chapter_diff (the review packet). Never attach samples/tender.md, requirement.md, or source trees.
-- Compliance matrix columns: 条款 / 是否响应 / 证据页码 / 意见 / 状态. After /lock it cannot be edited.
+- Compliance matrix columns: 条款 / 是否响应 / 证据页码 / 意见 / 状态. After /lock clauses cannot be added or removed; response fields update from your execute/revise draft.
 - Write drafts to `.prd-ai-battle/drafts/vN/response.md`.
 - Never print, log, or commit API keys.

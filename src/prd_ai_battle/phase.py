@@ -153,8 +153,9 @@ def cmd_lock(session: Session) -> dict[str, Any]:
     payload = contract_payload(session)
     payload["matrix_markdown"] = session.state.matrix.as_prompt_table()
     payload["instruction"] = (
-        "Phase=locked. 对照表 cannot be edited. write_lock still ON. "
-        "Run /execute when you want the primary to write v1."
+        "Phase=locked. 对照表 clauses cannot be added or removed. "
+        "是否响应 / 证据页码 / 意见 update from the primary draft in execute/revise. "
+        "write_lock still ON. Run /execute when you want the primary to write v1."
     )
     return payload
 

@@ -1,6 +1,9 @@
-"""Build a 响应对照表 from an extracted brief."""
+"""Build a 响应对照表 from an extracted brief and mark coverage from a draft."""
 
 from __future__ import annotations
+
+import re
+from pathlib import Path
 
 from prd_ai_battle.models import Brief, ComplianceMatrix, MatrixRow, ResponseStatus, RowStatus
 
@@ -104,3 +107,226 @@ def apply_offline_seed(matrix: ComplianceMatrix) -> None:
             row.evidence_page = "商务 / 技术分册"
             row.opinion = "评分点已列提纲，待一次稿补证据"
             row.status = RowStatus.FILLED
+
+
+_KIND_PREFIX_RE = re.compile(
+    r"^(必须响应|可选优化|必须|可选|风险|约束|需求|目标)[：:\s]+"
+)
+_SPLIT_RE = re.compile(r"[，。；;、\n]+")
+_HEADING_RE = re.compile(r"^#{1,6}\s+")
+_STOP_NEEDLES = frozenset(
+    {
+        "必须",
+        "必须响应",
+        "响应",
+        "可选",
+        "可选优化",
+        "优化",
+        "风险",
+        "约束",
+        "需求",
+        "目标",
+        "条款",
+        "给出",
+        "评估",
+        "方案",
+        "要求",
+        "说明",
+        "以及",
+        "或者",
+        "并",
+        "的",
+    }
+)
+
+
+def apply_draft_coverage(matrix: ComplianceMatrix, draft: str) -> list[MatrixRow]:
+    """Set each existing row's 是否响应 / 证据 / 意见 from the draft.
+
+    Locked tables keep the same clause list (no add/remove). Response fields
+    update in place: yes if the draft addresses the clause, partial if weak,
+    no if missing. Evidence is a draft heading or line range, not a tender page.
+    """
+    ids_before = [row.clause_id for row in matrix.rows]
+    text = draft or ""
+    for row in matrix.rows:
+        responded, evidence, opinion = score_clause_coverage(row, text)
+        matrix.apply_response(
+            row.clause_id,
+            responded=responded,
+            evidence_page=evidence,
+            opinion=opinion,
+        )
+    if [row.clause_id for row in matrix.rows] != ids_before:
+        raise RuntimeError("Draft coverage must not add or remove 对照表 clauses")
+    return list(matrix.rows)
+
+
+def score_clause_coverage(row: MatrixRow, draft: str) -> tuple[ResponseStatus, str, str]:
+    """Return (responded, evidence, opinion) for one locked/unlocked row."""
+    if not (draft or "").strip():
+        return ResponseStatus.NO, "", "一次稿未覆盖"
+    needles = clause_needles(row)
+    hits = [needle for needle in needles if needle and needle in draft]
+    overlaps = shared_phrases(_clause_body(row.clause), draft)
+    long_hits = [hit for hit in hits if hit != row.clause_id and len(hit) >= 6] + overlaps
+    id_hit = row.clause_id in hits
+    if not hits and not overlaps:
+        return ResponseStatus.NO, "", "一次稿未覆盖"
+    if id_hit or long_hits:
+        evidence = evidence_locator(draft, long_hits[0] if long_hits else row.clause_id)
+        return ResponseStatus.YES, evidence, "一次稿已覆盖该条款"
+    evidence = evidence_locator(draft, hits[0])
+    return ResponseStatus.PARTIAL, evidence, "一次稿仅部分覆盖"
+
+
+def _clause_body(clause: str) -> str:
+    return _KIND_PREFIX_RE.sub("", (clause or "").strip())
+
+
+def shared_phrases(clause: str, draft: str, *, min_len: int = 6) -> list[str]:
+    """Long substrings of the clause that also appear in the draft."""
+    text = clause or ""
+    found: list[str] = []
+    index = 0
+    while index <= len(text) - min_len:
+        matched = ""
+        max_len = min(len(text) - index, 32)
+        for length in range(max_len, min_len - 1, -1):
+            piece = text[index : index + length]
+            if piece in _STOP_NEEDLES:
+                continue
+            if piece in draft:
+                matched = piece
+                break
+        if matched:
+            found.append(matched)
+            index += len(matched)
+        else:
+            index += 1
+    return found
+
+
+def clause_needles(row: MatrixRow) -> list[str]:
+    """Distinctive phrases used to decide yes / partial / no."""
+    needles = [row.clause_id]
+    body = _clause_body(row.clause)
+    chunks = [chunk.strip("：: ") for chunk in _SPLIT_RE.split(body) if chunk.strip()]
+    if body and body not in chunks:
+        chunks.insert(0, body)
+    for chunk in chunks:
+        if len(chunk) >= 4 and chunk not in _STOP_NEEDLES:
+            needles.append(chunk)
+        for token in re.split(r"\s+", chunk):
+            token = token.strip("：: ")
+            if len(token) >= 3 and token not in _STOP_NEEDLES:
+                needles.append(token)
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for needle in sorted(needles, key=len, reverse=True):
+        if needle in seen:
+            continue
+        seen.add(needle)
+        ordered.append(needle)
+    return ordered
+
+
+def evidence_locator(draft: str, needle: str) -> str:
+    """Section heading and/or line range inside the draft (not a 招标 page)."""
+    lines = (draft or "").splitlines()
+    heading = ""
+    start: int | None = None
+    end: int | None = None
+    for index, line in enumerate(lines, start=1):
+        if _HEADING_RE.match(line):
+            heading = _HEADING_RE.sub("", line).strip()
+        if needle and needle in line:
+            if start is None:
+                start = index
+            end = index
+    if start is None:
+        return heading or ""
+    loc = f"L{start}" if start == end else f"L{start}–L{end}"
+    return f"{heading} · {loc}" if heading else loc
+
+
+def collapse_duplicated_root(path: Path, root: Path) -> Path:
+    """Drop a repeated workspace prefix: root/root/drafts → root/drafts."""
+    parts = list(path.parts)
+    prefixes: list[tuple[str, ...]] = [tuple(root.parts)]
+    try:
+        prefixes.append(tuple(root.resolve().parts))
+    except OSError:
+        pass
+    for prefix in prefixes:
+        if not prefix:
+            continue
+        width = len(prefix)
+        changed = True
+        while changed:
+            changed = False
+            index = 0
+            rebuilt: list[str] = []
+            while index < len(parts):
+                window = tuple(parts[index : index + width])
+                nxt = tuple(parts[index + width : index + 2 * width])
+                if window == prefix and nxt == prefix:
+                    rebuilt.extend(prefix)
+                    index += 2 * width
+                    while tuple(parts[index : index + width]) == prefix:
+                        index += width
+                    changed = True
+                else:
+                    rebuilt.append(parts[index])
+                    index += 1
+            parts = rebuilt
+    if not parts:
+        return path
+    if parts[0] == "/":
+        return Path("/") / Path(*parts[1:])
+    return Path(*parts)
+
+
+def resolve_recorded_write_path(root: Path, incoming: str | Path) -> Path:
+    """Resolve a record-draft path without doubling the workspace prefix.
+
+    OpenCode often passes `.prd-ai-battle/round-matrix/drafts/v1/response.md`
+    while the session root is already `.prd-ai-battle/round-matrix`. Prefixing
+    blindly produced
+    `.prd-ai-battle/round-matrix/.prd-ai-battle/round-matrix/drafts/...`.
+    """
+    raw = Path(incoming)
+    collapsed = collapse_duplicated_root(raw if raw.is_absolute() else root / raw, root)
+    collapsed = collapse_duplicated_root(collapsed, root)
+
+    drafts_suffix = _drafts_suffix(raw)
+    if drafts_suffix is not None:
+        canonical = root / drafts_suffix
+        if canonical.is_file() or not collapsed.is_file():
+            return canonical
+
+    if raw.is_absolute():
+        return collapse_duplicated_root(raw, root)
+
+    raw_s = str(raw)
+    for prefix in (str(root), str(root.resolve()) if root.exists() else ""):
+        if not prefix:
+            continue
+        if raw_s == prefix or raw_s.startswith(prefix.rstrip("/\\") + "/"):
+            return collapse_duplicated_root(Path(raw_s), root)
+
+    cwd_candidate = collapse_duplicated_root(Path.cwd() / raw, root)
+    if cwd_candidate.is_file():
+        return cwd_candidate
+    if collapsed.is_file():
+        return collapsed
+    return collapse_duplicated_root(root / raw, root)
+
+
+def _drafts_suffix(path: Path) -> Path | None:
+    parts = path.parts
+    indexes = [i for i, part in enumerate(parts) if part == "drafts"]
+    if not indexes:
+        return None
+    start = indexes[-1]
+    return Path(*parts[start:])
