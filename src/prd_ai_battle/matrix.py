@@ -234,20 +234,26 @@ def clause_needles(row: MatrixRow) -> list[str]:
 def evidence_locator(draft: str, needle: str) -> str:
     """Section heading and/or line range inside the draft (not a 招标 page)."""
     lines = (draft or "").splitlines()
-    heading = ""
+    current_heading = ""
+    matched_heading = ""
     start: int | None = None
     end: int | None = None
+    in_code_fence = False
     for index, line in enumerate(lines, start=1):
-        if _HEADING_RE.match(line):
-            heading = _HEADING_RE.sub("", line).strip()
+        stripped = line.strip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_code_fence = not in_code_fence
+        if not in_code_fence and _HEADING_RE.match(line):
+            current_heading = _HEADING_RE.sub("", line).strip()
         if needle and needle in line:
             if start is None:
                 start = index
+                matched_heading = current_heading
             end = index
     if start is None:
-        return heading or ""
+        return current_heading or ""
     loc = f"L{start}" if start == end else f"L{start}–L{end}"
-    return f"{heading} · {loc}" if heading else loc
+    return f"{matched_heading} · {loc}" if matched_heading else loc
 
 
 def collapse_duplicated_root(path: Path, root: Path) -> Path:

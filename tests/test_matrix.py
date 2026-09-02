@@ -93,3 +93,27 @@ def test_apply_draft_coverage_yes_partial_no_and_keeps_clause_ids():
     assert by_id["R05"].responded is ResponseStatus.NO
     # "验收项" is a short token on R02 — at most partial, never a new clause
     assert by_id["R02"].responded in {ResponseStatus.NO, ResponseStatus.PARTIAL}
+
+
+def test_evidence_locator_and_split_sections_ignore_code_fence():
+    from prd_ai_battle.diffs import split_sections
+    from prd_ai_battle.matrix import evidence_locator
+
+    sample = (
+        "# 第一章 总览\n"
+        "这里是正文\n"
+        "```bash\n"
+        "# 脚本注释\n"
+        "curl http://localhost\n"
+        "```\n"
+        "# 第二章 详细方案\n"
+        "配置步骤说明\n"
+    )
+    sections = split_sections(sample)
+    headings = [h for h, _ in sections]
+    assert headings == ["第一章 总览", "第二章 详细方案"]
+    assert "脚本注释" not in headings
+
+    loc = evidence_locator(sample, "curl http://localhost")
+    assert "第一章 总览" in loc
+    assert "脚本注释" not in loc

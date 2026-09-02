@@ -11,14 +11,22 @@ def split_sections(markdown: str) -> list[tuple[str, str]]:
     sections: list[tuple[str, str]] = []
     heading = "preamble"
     buf: list[str] = []
+    in_code_fence = False
     for line in markdown.splitlines():
-        if line.startswith("#"):
-            if buf:
-                sections.append((heading, "\n".join(buf).strip()))
-            heading = line.lstrip("#").strip() or heading
-            buf = [line]
-        else:
+        stripped = line.strip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_code_fence = not in_code_fence
             buf.append(line)
+            continue
+        if not in_code_fence and line.startswith("#"):
+            clean = line.lstrip("#")
+            if clean.startswith(" ") or clean == "":
+                if buf:
+                    sections.append((heading, "\n".join(buf).strip()))
+                heading = clean.strip() or heading
+                buf = [line]
+                continue
+        buf.append(line)
     if buf:
         sections.append((heading, "\n".join(buf).strip()))
     return sections

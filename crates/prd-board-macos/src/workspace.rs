@@ -84,25 +84,19 @@ pub fn default_picker_directory(repo: &Path) -> PathBuf {
 
 /// Named product workspace the picker should land on when it already exists.
 pub fn existing_round_matrix(repo: &Path) -> Option<PathBuf> {
-    for cand in [
+    [
         repo.join(ROUND_MATRIX),
         repo.join(NESTED_WS).join(ROUND_MATRIX),
-    ] {
-        if cand.is_dir() && peek_workspace_dir(&cand).is_some() {
-            return Some(cand);
-        }
-    }
-    None
+    ]
+    .into_iter()
+    .find(|cand| cand.is_dir() && peek_workspace_dir(cand).is_some())
 }
 
 /// Last-used workspace from the product catalog (not a Rust prefs file).
 pub fn last_used_workspace(repo: &Path) -> Option<PathBuf> {
-    for catalog in product_catalog_paths(repo) {
-        if let Some(ws) = active_workspace_from_catalog(&catalog) {
-            return Some(ws);
-        }
-    }
-    None
+    product_catalog_paths(repo)
+        .into_iter()
+        .find_map(|catalog| active_workspace_from_catalog(&catalog))
 }
 
 fn product_catalog_paths(repo: &Path) -> [PathBuf; 2] {
