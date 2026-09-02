@@ -26,6 +26,7 @@ from prd_ai_battle.config import (
     save_local_config,
     write_env_file,
 )
+from prd_ai_battle.models import Phase, SessionState
 from prd_ai_battle.session import Session
 
 BOARD_DIR_NAME = ".prd-ai-battle-board"
@@ -34,6 +35,24 @@ DEFAULT_PROJECT_NAME = "默认项目"
 NEW_PROJECT_PREFIX = "项目"
 
 _SLUG_SAFE = re.compile(r"[^a-z0-9]+")
+_D01_NAME = re.compile(r"^D\d+$", re.I)
+_EMPTY_CLAUSE = frozenset({"", "(none)", "（无）", "无", "-", "—"})
+_SKIP_DISCOVER_DIRS = frozenset({
+    ".git",
+    ".venv",
+    "venv",
+    "src",
+    "tests",
+    "samples",
+    "schemas",
+    "scripts",
+    "node_modules",
+    "__pycache__",
+    ".opencode",
+    "dist",
+    "build",
+})
+LOCKED_OR_LATER = frozenset({Phase.LOCKED, Phase.EXECUTE, Phase.REVIEW, Phase.REVISE})
 
 
 class ProjectError(RuntimeError):
@@ -75,6 +94,97 @@ def unique_project_id(existing: set[str]) -> str:
     return f"p{n}"
 
 
+def peek_workspace_dir(path: Path) -> Path | None:
+    """Return the directory that holds session.json, if any."""
+    candidate = Path(path)
+    if (candidate / "session.json").is_file():
+        return candidate
+    nested = candidate / ".prd-ai-battle"
+    if (nested / "session.json").is_file():
+        return nested
+    return None
+
+
+def peek_workspace_state(path: Path) -> SessionState | None:
+    ws = peek_workspace_dir(path)
+    if ws is None:
+        return None
+    try:
+        return SessionState.model_validate_json((ws / "session.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def is_leftover_tender_fixture(state: SessionState | None, workspace: Path) -> bool:
+    """True when this workspace is the bundled sample tender, not a real bid."""
+    if state is None:
+        return False
+    source = " ".join(
+        [
+            state.requirement_path or "",
+            state.brief.source_path if state.brief is not None else "",
+        ]
+    ).replace("\\", "/")
+    if "data/tender.md" in source:
+        return True
+    req = Path(workspace) / "requirement.md"
+    if not req.is_file():
+        return False
+    try:
+        from prd_ai_battle.ingest import bundled_sample_path
+
+        bundled = bundled_sample_path().read_text(encoding="utf-8").strip()
+        return req.read_text(encoding="utf-8").strip() == bundled
+    except OSError:
+        return False
+
+
+def is_empty_d01_stub(state: SessionState | None, name: str = "") -> bool:
+    """True for an empty D01 leftover (named D01, or a stub D01 row with no clause)."""
+    if name and _D01_NAME.fullmatch(name.strip()):
+        if state is None:
+            return True
+        if state.brief is None and not state.matrix.rows:
+            return True
+    if state is None:
+        return False
+    rows = state.matrix.rows
+    if not rows:
+        return False
+
+    def _empty(row) -> bool:
+        return "".join((row.clause or "").split()) in _EMPTY_CLAUSE
+
+    if all(_empty(row) for row in rows):
+        return True
+    if len(rows) == 1 and str(rows[0].clause_id).upper().startswith("D") and _empty(rows[0]):
+        return True
+    return False
+
+
+def is_locked_or_later(state: SessionState | None) -> bool:
+    return state is not None and state.phase in LOCKED_OR_LATER
+
+
+def discover_named_workspaces(search_root: Path) -> list[tuple[str, Path]]:
+    """Sibling dirs such as round-matrix that already hold a session."""
+    root = Path(search_root)
+    if not root.is_dir():
+        return []
+    found: list[tuple[str, Path]] = []
+    try:
+        children = list(root.iterdir())
+    except OSError:
+        return []
+    for child in sorted(children):
+        if not child.is_dir() or child.name.startswith(".") or child.name in _SKIP_DISCOVER_DIRS:
+            continue
+        ws = peek_workspace_dir(child)
+        if ws is not None:
+            found.append((child.name, ws))
+    return found
+
+
 class ProjectHub:
     """Catalog + mounted Session objects. Active project owns the board chrome."""
 
@@ -88,33 +198,48 @@ class ProjectHub:
         self._mounted: dict[str, Session] = {}
 
     @classmethod
-    def open(cls, home: Path, *, seed_config: AppConfig, offline: bool | None = None) -> ProjectHub:
-        """Load a catalog or register the current workspace as the first project."""
+    def open(
+        cls,
+        home: Path,
+        *,
+        seed_config: AppConfig,
+        offline: bool | None = None,
+        search_root: Path | None = None,
+    ) -> ProjectHub:
+        """Load a catalog or register the current workspace as the first project.
+
+        Default/open prefers a last-locked workspace (e.g. round-matrix) over a
+        leftover bundled tender fixture or an empty D01 stub. Fresh empty
+        workspaces stay as a clean project.
+        """
         off = seed_config.offline if offline is None else offline
         hub = cls(home, offline=off)
         hub._load()
-        if hub.projects:
-            if hub.active_id not in hub.projects:
-                hub.active_id = hub.order[0]
-            hub.mount(hub.active_id)
-            return hub
-        ws = Path(seed_config.workspace).resolve()
-        rec = ProjectRecord(
-            id=unique_project_id(set()),
-            name=DEFAULT_PROJECT_NAME,
-            root=str(infer_project_root(ws).resolve()),
-            workspace=str(ws),
-        )
-        cfg = seed_config.model_copy(deep=True)
-        cfg.offline = off
-        cfg.workspace = str(ws)
-        overlay = read_env_file(Path(rec.root) / LOCAL_ENV_NAME)
-        bake_project_secrets(cfg, overlay)
-        hub.projects[rec.id] = rec
-        hub.order.append(rec.id)
-        hub._mounted[rec.id] = Session(cfg, root=ws)
-        hub.active_id = rec.id
-        hub._save()
+        if search_root is not None:
+            hub._adopt_discovered(Path(search_root))
+        if not hub.projects:
+            ws = Path(seed_config.workspace).resolve()
+            rec = ProjectRecord(
+                id=unique_project_id(set()),
+                name=DEFAULT_PROJECT_NAME,
+                root=str(infer_project_root(ws).resolve()),
+                workspace=str(ws),
+            )
+            cfg = seed_config.model_copy(deep=True)
+            cfg.offline = off
+            cfg.workspace = str(ws)
+            overlay = read_env_file(Path(rec.root) / LOCAL_ENV_NAME)
+            bake_project_secrets(cfg, overlay)
+            hub.projects[rec.id] = rec
+            hub.order.append(rec.id)
+            hub._mounted[rec.id] = Session(cfg, root=ws)
+            hub.active_id = rec.id
+            hub._save()
+        hub._prefer_startup(seed_config)
+        if hub.active_id not in hub.projects and hub.order:
+            hub.active_id = hub.order[0]
+            hub._save()
+        hub.mount(hub.active_id)
         return hub
 
     @property
@@ -226,6 +351,66 @@ class ProjectHub:
         self._save()
         return rec
 
+    def _adopt_discovered(self, search_root: Path) -> None:
+        """Register sibling workspaces (round-matrix, …) that are not in the catalog."""
+        existing = {Path(p.workspace).resolve() for p in self.projects.values()}
+        existing_names = {p.name for p in self.projects.values()}
+        added = False
+        for name, ws in discover_named_workspaces(search_root):
+            resolved = ws.resolve()
+            if resolved in existing:
+                continue
+            pid = unique_project_id(set(self.projects))
+            label = name
+            n = 2
+            while label in existing_names:
+                label = f"{name}-{n}"
+                n += 1
+            rec = ProjectRecord(
+                id=pid,
+                name=label,
+                root=str(infer_project_root(resolved).resolve()),
+                workspace=str(resolved),
+            )
+            self.projects[pid] = rec
+            self.order.append(pid)
+            existing.add(resolved)
+            existing_names.add(label)
+            added = True
+        if added:
+            self._save()
+
+    def _prefer_startup(self, seed_config: AppConfig) -> None:
+        """Land on last locked workspace, else a clean project — not leftover/D01."""
+        locked: list[tuple[str, str]] = []
+        clean: list[tuple[str, str]] = []
+        junk: list[str] = []
+        for rec in self.iter_projects():
+            state = peek_workspace_state(rec.workspace_path)
+            stamp = (state.updated_at if state is not None else "") or ""
+            if is_locked_or_later(state):
+                locked.append((stamp, rec.id))
+            elif is_leftover_tender_fixture(state, rec.workspace_path) or is_empty_d01_stub(
+                state, rec.name
+            ):
+                junk.append(rec.id)
+            else:
+                clean.append((stamp, rec.id))
+        if locked:
+            locked.sort()
+            self.active_id = locked[-1][1]
+            self._save()
+            return
+        if clean:
+            if self.active_id in {pid for _, pid in clean}:
+                return
+            clean.sort()
+            self.active_id = clean[-1][1]
+            self._save()
+            return
+        if junk:
+            self.create_project(offline=self.offline)
+
     def _load(self) -> None:
         if not self.catalog_path.is_file():
             return
@@ -254,9 +439,16 @@ __all__ = [
     "BOARD_DIR_NAME",
     "CATALOG_NAME",
     "DEFAULT_PROJECT_NAME",
+    "LOCKED_OR_LATER",
     "NEW_PROJECT_PREFIX",
     "ProjectError",
     "ProjectHub",
     "ProjectRecord",
+    "discover_named_workspaces",
+    "is_empty_d01_stub",
+    "is_leftover_tender_fixture",
+    "is_locked_or_later",
+    "peek_workspace_dir",
+    "peek_workspace_state",
     "unique_project_id",
 ]

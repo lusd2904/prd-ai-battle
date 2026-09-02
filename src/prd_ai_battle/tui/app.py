@@ -173,6 +173,8 @@ class BattleApp(App[None]):
         self._refresh_status()
         if self._requirement_arg is not None:
             self._apply_requirement(self._requirement_arg)
+        elif self.session.requirement or self.session.brief:
+            self._refresh_left()
         else:
             self.query_one("#requirement", Markdown).update(
                 "按 **L** 载入内置招标文件，或传入 `--requirement PATH`。"
@@ -462,8 +464,10 @@ class BattleApp(App[None]):
     def action_review(self) -> None:
         if self._busy:
             return
-        if not self.session.state.artifact_version:
-            self.notify("主笔须先写出稿（E）", severity="warning")
+        try:
+            self.session.assert_review_ready()
+        except IllegalTransition as exc:
+            self.notify(str(exc), severity="error")
             return
         self._user_note("阶段=审核 — 顾问只看 摘要 + 对照表 + chapter_diff。")
         self._run_stream(self.session.review())

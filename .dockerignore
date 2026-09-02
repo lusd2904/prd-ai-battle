@@ -1,0 +1,33 @@
+.git
+.github
+.venv
+venv
+__pycache__
+*.py[cod]
+*.egg-info
+.eggs
+dist
+build
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.coverage
+htmlcov
+*.screenshot.svg
+
+# Runtime workspaces — persist via compose bind, not the image.
+.prd-ai-battle
+.prd-ai-battle-board
+workspace
+
+# Gitignored secrets / last-saved local config. Never bake into the image.
+prd-ai-battle.yaml
+prd-ai-battle.env
+prd-ai-battle.opencode.json
+config.yaml
+.env
+.env.local
+
+# Dev-only
+tests
+.cursor

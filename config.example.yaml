@@ -15,6 +15,11 @@ offline: false
 # Speaks grok-4.5 / grok-composer-2.5-fast, NOT Claude. Copy key names from
 # prd-ai-battle.env.example → gitignored prd-ai-battle.env.
 # Primary/advisors override base_url below (xixi / OpenRouter).
+#
+# Mac host default is 127.0.0.1. From a Linux Docker container the loopback
+# is the container itself — set PRD_AI_GATEWAY_URL to
+# http://host.docker.internal:8000/v1 (compose extra_hosts already maps it).
+# Do not change this seed default to a cloud host.
 gateway:
   base_url: ${PRD_AI_GATEWAY_URL:-http://127.0.0.1:8000/v1}
   api_key: ${PRD_AI_GATEWAY_KEY:-}

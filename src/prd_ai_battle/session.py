@@ -27,6 +27,21 @@ from prd_ai_battle.state import IllegalTransition, StateMachine
 from prd_ai_battle.store import WorkspaceStore
 from prd_ai_battle.write_lock import ArtifactWriter, WriteDenied, WriteLock
 
+REVIEW_NO_BRIEF = (
+    "审核失败：没有摘要（brief）。请先载入招标并 /discuss。"
+    "不能把空包发给顾问。"
+)
+REVIEW_NO_ARTIFACT = (
+    "审核失败：没有可审的稿件（artifact）。"
+    "请先 /execute 让主笔写出 drafts/vN/response.md，再 /review。"
+    "不能把空包发给顾问。"
+)
+REVIEW_NO_CHAPTER_DIFF = (
+    "审核失败：没有 chapter_diff。"
+    "顾问只审 摘要 + 对照表 + chapter_diff，空包已拒绝。"
+    "请先写出稿件，或确认正文相对上一版有章节差异。"
+)
+
 OPENING_PROMPT = (
     "Discuss the brief in one shared thread. Identify must-win scoring points, "
     "废标风险, and what should go into the 响应对照表. Do not write files."
@@ -218,18 +233,27 @@ class Session:
             },
         ]
 
+    def assert_review_ready(self) -> None:
+        """Fail closed before /review. Never hand advisors an empty packet."""
+        self.build_review_packet()
+
     def build_review_packet(self) -> ReviewPacket:
         if self.state.brief is None:
-            raise IllegalTransition("No brief")
+            raise IllegalTransition(REVIEW_NO_BRIEF)
         version = self.store.latest_version()
         if version < 1:
-            raise IllegalTransition("No draft to review")
+            raise IllegalTransition(REVIEW_NO_ARTIFACT)
         current = self.store.read_draft(version)
+        if not (current or "").strip():
+            raise IllegalTransition(REVIEW_NO_ARTIFACT)
         previous = self.store.read_draft(version - 1) if version > 1 else ""
+        diffs = chapter_diffs(previous, current)
+        if not diffs:
+            raise IllegalTransition(REVIEW_NO_CHAPTER_DIFF)
         return ReviewPacket(
             brief=self.state.brief,
             matrix=self.state.matrix,
-            chapter_diff=chapter_diffs(previous, current),
+            chapter_diff=diffs,
         )
 
     def write_review_packet(self) -> Path:
@@ -388,11 +412,11 @@ class Session:
         return self.last_write_path
 
     async def review(self) -> AsyncIterator[StreamDelta]:
+        packet = self.build_review_packet()
         if self.state.phase in {Phase.EXECUTE, Phase.REVISE}:
             self.begin_review()
         elif self.state.phase is not Phase.REVIEW:
             raise IllegalTransition(f"Review is only valid after execute (in {self.state.phase.value})")
-        packet = self.build_review_packet()
         advisors = list(self.config.advisors)
         messages_for = {m.id: self._review_messages(packet) for m in advisors}
         tools_for = self._tools_map([m.id for m in advisors])
@@ -525,4 +549,11 @@ async def run_offline_pipeline(workspace: Path, *, seed_matrix: bool = True) -> 
     }
 
 
-__all__ = ["Session", "WriteDenied", "run_offline_pipeline"]
+__all__ = [
+    "REVIEW_NO_ARTIFACT",
+    "REVIEW_NO_BRIEF",
+    "REVIEW_NO_CHAPTER_DIFF",
+    "Session",
+    "WriteDenied",
+    "run_offline_pipeline",
+]

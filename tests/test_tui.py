@@ -3,6 +3,7 @@ from pathlib import Path
 from prd_ai_battle.config import AppConfig, GatewayConfig, LOCAL_GATEWAY_URL, ModelConfig, default_offline_config
 from prd_ai_battle.models import Phase
 from prd_ai_battle.projects import ProjectHub
+from prd_ai_battle.session import Session
 from prd_ai_battle.tui.app import BattleApp, Bubble
 from prd_ai_battle.tui.skin import (
     BTN_NEW_PROJECT,
@@ -299,6 +300,26 @@ async def test_tui_project_list_switch_restores_a(tmp_path: Path):
         assert app.session.state.primary == "lead-a"
         active_again = next(btn for btn in app.query(".project-item") if "active" in btn.classes)
         assert "项目甲" in str(active_again.label)
+
+
+async def test_tui_open_shows_locked_workspace_not_press_l(tmp_path: Path):
+    ws = tmp_path / "round-matrix"
+    sess = Session(default_offline_config(str(ws)), root=ws)
+    sess.load_sample()
+    sess.seed_matrix_offline()
+    sess.lock_matrix()
+    hub = ProjectHub.open(
+        tmp_path / "board",
+        seed_config=default_offline_config(str(ws)),
+        offline=True,
+    )
+    assert hub.active_session().state.phase is Phase.LOCKED
+    app = BattleApp(hub=hub, screenshot_ready=True)
+    async with app.run_test(size=(140, 40)) as pilot:
+        await pilot.pause()
+        assert app.session.state.phase is Phase.LOCKED
+        assert app.query_one("#matrix").row_count > 0
+        assert "已锁定" in app.status_text
 
 
 async def test_tui_new_project_button(tmp_path: Path):

@@ -177,13 +177,14 @@ def cmd_execute(session: Session) -> dict[str, Any]:
 
 
 def cmd_review(session: Session) -> dict[str, Any]:
+    # Fail closed before any phase change or review-packet.md write.
+    packet = session.build_review_packet()
     if session.state.phase in {Phase.EXECUTE, Phase.REVISE}:
         session.begin_review()
     elif session.state.phase is not Phase.REVIEW:
         session.machine.enter_review()
         session.persist()
     packet_path = session.write_review_packet()
-    packet = session.build_review_packet()
     if hasattr(session.client, "delay_s"):
         session.client.delay_s = 0.0  # type: ignore[attr-defined]
     _run_stream(session.review())

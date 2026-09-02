@@ -63,7 +63,11 @@ class StateMachine:
         if dest is Phase.EXECUTE and not self.state.matrix.locked:
             raise IllegalTransition("Cannot execute until the matrix is locked")
         if dest is Phase.REVIEW and not self.state.artifact_version:
-            raise IllegalTransition("Cannot review until the primary has written a draft")
+            raise IllegalTransition(
+                "审核失败：没有可审的稿件（draft / artifact）。"
+                "请先 /execute 让主笔写出 drafts/vN/response.md，再 /review。"
+                "不能把空包发给顾问。"
+            )
         previous = self.phase
         self.state.phase = dest
         self.history.append((previous, dest))

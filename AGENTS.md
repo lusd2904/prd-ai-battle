@@ -32,6 +32,10 @@ Seed snapshot (changeable):
 - During discuss, yaml `primary` + `advisors[]` (not hardcoded names) run a **group chat** on **one shared timeline**: round 0 is a parallel opening on the brief; later rounds give every speaker the FULL `timeline[]` plus brief so they can agree, disagree, or ask each other. Repeat until `/lock`. Advisors stay `tools=[]`. write_lock stays closed. User can interrupt (Esc / 停止); partial utterances stay. Do not spawn OpenCode teammate / sidecar panes. One advisor timeout or HTTP fail must not abort the others (`stream_parallel` isolates errors).
 - During review, every configured advisor runs **in parallel**. Input is **only** brief + matrix + chapter_diff. Findings fold into the same labeled timeline.
 
+## Docker (local only)
+
+`Dockerfile` / `docker-compose.yml` deliver the Chinese board on the Mac (`docker compose build && docker compose run --rm prd-ai-battle`). Default CMD is the board, not `discuss --offline`. Container speakers are HTTP (xixi / OpenRouter); Mac CLI binaries stay on the host. No cloud-host deploy. No secrets in git or the image.
+
 ## Drafts
 
 Write bid responses to `.prd-ai-battle/drafts/vN/response.md`.
