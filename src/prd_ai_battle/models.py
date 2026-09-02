@@ -53,14 +53,22 @@ class ScoringPoint(BaseModel):
     detail: str = ""
 
 
+class RequirementClause(BaseModel):
+    """A non-tender requirement line (必须 / 可选 / 风险 / 约束 / …)."""
+
+    kind: str
+    text: str
+
+
 class Brief(BaseModel):
-    """Shared extract — 目录 / 评分点 / 废标项. Never the full tender."""
+    """Shared extract — 目录 / 评分点 / 废标项 / 需求条款. Never the raw file."""
 
     title: str
     toc: list[str] = Field(default_factory=list)
     scoring_points: list[ScoringPoint] = Field(default_factory=list)
     disqualifiers: list[str] = Field(default_factory=list)
     starred_requirements: list[str] = Field(default_factory=list)
+    requirement_clauses: list[RequirementClause] = Field(default_factory=list)
     summary: str = ""
     source_path: str = ""
     extracted_at: str = Field(default_factory=iso_now)
@@ -73,13 +81,15 @@ class Brief(BaseModel):
         ) or "- (none)"
         disq = "\n".join(f"- {d}" for d in self.disqualifiers) or "- (none)"
         starred = "\n".join(f"- {s}" for s in self.starred_requirements) or "- (none)"
+        reqs = "\n".join(f"- {c.text}" for c in self.requirement_clauses) or "- (none)"
         return (
             f"# Brief: {self.title}\n\n"
             f"{self.summary}\n\n"
             f"## 目录\n{toc}\n\n"
             f"## 评分点\n{scores}\n\n"
             f"## 废标项\n{disq}\n\n"
-            f"## ★ 必须响应条款\n{starred}\n"
+            f"## ★ 必须响应条款\n{starred}\n\n"
+            f"## 需求条款\n{reqs}\n"
         )
 
 
