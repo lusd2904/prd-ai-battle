@@ -99,6 +99,31 @@ def test_phase_ingest_pdf(tmp_path: Path):
     assert "%PDF" not in payload["brief_markdown"]
 
 
+def test_cli_write_check_denies_unknown_actor(tmp_path: Path, capsys):
+    session = load_session(workspace=tmp_path, offline=True)
+    cmd_discuss(session)
+    cmd_lock(session)
+    cmd_execute(session)
+    args = build_parser().parse_args(
+        [
+            "write-check",
+            "--actor",
+            "unknown",
+            "--tool",
+            "write",
+            "--path",
+            "drafts/v1/response.md",
+            "--workspace",
+            str(tmp_path),
+            "--offline",
+        ]
+    )
+    assert cmd_write_check(args) == 2
+    out = capsys.readouterr().out
+    assert '"ok": false' in out
+    assert "unknown" in out.lower()
+
+
 def test_cli_phase_status(tmp_path: Path, capsys):
     args = build_parser().parse_args(
         ["phase", "discuss", "--workspace", str(tmp_path), "--offline"]

@@ -1,7 +1,10 @@
 """write-check: advisors tools=[], primary writes only in execute/revise."""
 
-from prd_ai_battle.bridge import write_check
+import pytest
+
+from prd_ai_battle.bridge import WRITE_TOOLS, write_check
 from prd_ai_battle.models import Brief, ComplianceMatrix, MatrixRow, Phase, SessionState
+from prd_ai_battle.write_lock import WriteDenied, WriteLock
 
 
 def _state(phase: Phase = Phase.DISCUSS, *, advisors=None) -> SessionState:
@@ -86,3 +89,48 @@ def test_advisor_never_reads_raw_pdf():
     assert pdf["ok"] is False
     named = write_check(state, actor_id="advisor-sonnet", tool="read", path="samples/tender.pdf")
     assert named["ok"] is False
+
+
+@pytest.mark.parametrize("phase", list(Phase))
+@pytest.mark.parametrize("advisor", ["advisor-sonnet", "advisor-grok", "advisor-a"])
+@pytest.mark.parametrize("tool", ["write", "edit", "apply_patch", "bash", "shell"])
+def test_advisor_denied_write_and_shell_in_every_phase(phase, advisor, tool):
+    state = _state(phase)
+    result = write_check(state, actor_id=advisor, tool=tool, path="drafts/v1/sneaky.md")
+    assert result["ok"] is False
+    if tool in WRITE_TOOLS:
+        with pytest.raises(WriteDenied):
+            WriteLock(state).assert_can_write(advisor)
+
+
+@pytest.mark.parametrize("phase", [Phase.DISCUSS, Phase.LOCKED, Phase.REVIEW])
+@pytest.mark.parametrize("tool", ["write", "edit", "apply_patch", "write_file"])
+def test_primary_write_denied_in_discuss_locked_review(phase, tool):
+    state = _state(phase)
+    result = write_check(state, actor_id="primary", tool=tool, path="drafts/v1/response.md")
+    assert result["ok"] is False
+    assert "execute" in result["reason"] or "revise" in result["reason"] or "forbidden" in result["reason"]
+    with pytest.raises(WriteDenied):
+        WriteLock(state).assert_can_write("primary")
+
+
+@pytest.mark.parametrize("phase", [Phase.EXECUTE, Phase.REVISE])
+@pytest.mark.parametrize("tool", ["write", "edit", "apply_patch"])
+def test_primary_write_allowed_in_execute_revise_matrix(phase, tool):
+    state = _state(phase)
+    result = write_check(state, actor_id="primary", tool=tool, path="drafts/v1/response.md")
+    assert result["ok"] is True
+    WriteLock(state).assert_can_write("primary")
+
+
+@pytest.mark.parametrize("phase", list(Phase))
+@pytest.mark.parametrize("actor", ["unknown", "", "  "])
+@pytest.mark.parametrize("tool", ["write", "edit", "apply_patch", "bash", "shell"])
+def test_unknown_actor_denied_writes_and_shell(phase, actor, tool):
+    state = _state(phase)
+    result = write_check(state, actor_id=actor, tool=tool, path="drafts/v1/response.md")
+    assert result["ok"] is False
+    assert "unknown" in result["reason"]
+    if tool in WRITE_TOOLS:
+        with pytest.raises(WriteDenied, match="unknown"):
+            WriteLock(state).assert_can_write(actor)

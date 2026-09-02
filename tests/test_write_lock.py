@@ -78,3 +78,30 @@ def test_rejects_path_escape(tmp_path: Path):
     writer = ArtifactWriter(tmp_path / "drafts", WriteLock(sm.state), sm)
     with pytest.raises(WriteDenied, match="relative"):
         writer.write("primary", "../escape.md", "x")
+
+
+def test_unknown_actor_cannot_write_even_in_execute(tmp_path: Path):
+    sm = _machine(Phase.EXECUTE)
+    lock = WriteLock(sm.state)
+    for actor in ("unknown", ""):
+        with pytest.raises(WriteDenied, match="unknown"):
+            lock.assert_can_write(actor, sm)
+    writer = ArtifactWriter(tmp_path / "drafts", lock, sm)
+    with pytest.raises(WriteDenied, match="unknown"):
+        writer.write("unknown", "response.md", "nope")
+    assert not (tmp_path / "drafts").exists() or not any((tmp_path / "drafts").rglob("response.md"))
+
+
+def test_assert_can_write_matches_phase_rules():
+    lock = WriteLock(_machine().state)
+    for phase in Phase:
+        sm = _machine(phase)
+        if phase in {Phase.EXECUTE, Phase.REVISE}:
+            lock.assert_can_write("primary", sm)
+        else:
+            with pytest.raises(WriteDenied):
+                lock.assert_can_write("primary", sm)
+        with pytest.raises(WriteDenied):
+            lock.assert_can_write("advisor-a", sm)
+        with pytest.raises(WriteDenied, match="unknown"):
+            lock.assert_can_write("unknown", sm)
