@@ -6,6 +6,10 @@ from prd_ai_battle.config import (
     GATEWAY_KEY_ENV,
     GATEWAY_URL_ENV,
     LOCAL_GATEWAY_URL,
+    OPENROUTER_BASE_URL,
+    OPENROUTER_KEY_ENV,
+    XIXI_BASE_URL,
+    XIXI_KEY_ENV,
     ConfigError,
     doctor_report,
     expand_env,
@@ -26,44 +30,73 @@ SCAN_PATHS = [
     Path("schemas/config.schema.json"),
     Path("src/prd_ai_battle/config.py"),
     Path("src/prd_ai_battle/llm.py"),
+    Path("src/prd_ai_battle/bridge.py"),
     Path("README.md"),
+    Path("opencode.json"),
+    Path(".opencode/opencode.json"),
+    Path(".opencode/plugins/write-lock.js"),
 ]
 
 
-def test_example_and_client_have_no_vendor_or_tunnel_hosts():
+def test_example_and_client_have_no_leaked_tunnel_or_vendor_sdk_hosts():
     for path in SCAN_PATHS:
         text = path.read_text(encoding="utf-8")
         for fragment in BANNED_HOST_FRAGMENTS:
             assert fragment not in text, f"{fragment} hardcoded in {path}"
+        assert "sk-" not in text
 
 
-def test_example_defaults_to_local_gateway(monkeypatch):
+def test_example_uses_product_endpoints_and_env_keys(monkeypatch):
     monkeypatch.delenv(GATEWAY_URL_ENV, raising=False)
     monkeypatch.delenv(GATEWAY_KEY_ENV, raising=False)
+    monkeypatch.delenv(XIXI_KEY_ENV, raising=False)
+    monkeypatch.delenv(OPENROUTER_KEY_ENV, raising=False)
     cfg = load_config(Path("config.example.yaml"), offline=True)
     assert cfg.gateway.resolved_base_url() == LOCAL_GATEWAY_URL
-    assert cfg.primary.resolved_base_url(cfg.gateway) == LOCAL_GATEWAY_URL
-    assert cfg.advisors[0].resolved_base_url(cfg.gateway) == LOCAL_GATEWAY_URL
+    assert LOCAL_GATEWAY_URL == "http://127.0.0.1:8000/v1"
+    assert cfg.primary.model == "claude-opus-5"
+    assert cfg.primary.resolved_base_url(cfg.gateway) == XIXI_BASE_URL
+    assert cfg.primary.api_key_env == XIXI_KEY_ENV
+    assert cfg.advisors[0].id == "advisor-sonnet"
+    assert cfg.advisors[0].model == "claude-sonnet-5"
+    assert cfg.advisors[0].resolved_base_url(cfg.gateway) == XIXI_BASE_URL
+    assert cfg.advisors[1].id == "advisor-grok"
+    assert cfg.advisors[1].model == "x-ai/grok-4.6"
+    assert cfg.advisors[1].resolved_base_url(cfg.gateway) == OPENROUTER_BASE_URL
+    assert cfg.advisors[1].api_key_env == OPENROUTER_KEY_ENV
     assert cfg.primary.resolved_key(cfg.gateway) == ""
     assert cfg.primary.chat_completions_url(cfg.gateway).endswith("/chat/completions")
 
 
-def test_env_overrides_gateway(monkeypatch):
-    monkeypatch.setenv(GATEWAY_URL_ENV, "http://127.0.0.1:9999/v1")
-    monkeypatch.setenv(GATEWAY_KEY_ENV, "local-secret")
+def test_env_keys_redacted_in_doctor(monkeypatch):
+    monkeypatch.setenv(XIXI_KEY_ENV, "xixi-super-secret")
+    monkeypatch.setenv(OPENROUTER_KEY_ENV, "or-super-secret")
+    monkeypatch.setenv(GATEWAY_KEY_ENV, "gw-super-secret")
     cfg = load_config(Path("config.example.yaml"), offline=False)
-    assert cfg.primary.resolved_base_url(cfg.gateway) == "http://127.0.0.1:9999/v1"
-    assert cfg.primary.resolved_key(cfg.gateway) == "local-secret"
+    assert cfg.primary.resolved_key(cfg.gateway) == "xixi-super-secret"
+    assert cfg.advisors[1].resolved_key(cfg.gateway) == "or-super-secret"
     report = doctor_report(cfg)
-    assert report["gateway"]["api_key"] == "set"
-    assert "local-secret" not in str(report)
+    blob = str(report)
+    assert "xixi-super-secret" not in blob
+    assert "or-super-secret" not in blob
+    assert "gw-super-secret" not in blob
+    assert report["models"][0]["api_key"] == "set"
+    assert report["models"][2]["api_key"] == "set"
+
+
+def test_backup_gateway_env_override(monkeypatch):
+    monkeypatch.setenv(GATEWAY_URL_ENV, "http://127.0.0.1:9999/v1")
+    cfg = load_config(Path("config.example.yaml"), offline=True)
+    assert cfg.gateway.resolved_base_url() == "http://127.0.0.1:9999/v1"
+    # Per-model URLs stay on the product endpoints.
+    assert cfg.primary.resolved_base_url(cfg.gateway) == XIXI_BASE_URL
 
 
 def test_per_model_override(tmp_path: Path, monkeypatch):
     monkeypatch.delenv(GATEWAY_KEY_ENV, raising=False)
     yaml_text = """
 gateway:
-  base_url: http://127.0.0.1:4000/v1
+  base_url: http://127.0.0.1:8000/v1
   api_key: ${PRD_AI_GATEWAY_KEY:-gw-default}
 primary:
   id: primary

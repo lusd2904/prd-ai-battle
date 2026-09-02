@@ -16,10 +16,20 @@ from pydantic import BaseModel, Field, field_validator
 
 ENV_PATTERN = re.compile(r"\$\{([A-Z0-9_]+)(?::-([^}]*))?\}")
 
-# Loopback only — not a vendor API domain. Override with PRD_AI_GATEWAY_URL.
-LOCAL_GATEWAY_URL = "http://127.0.0.1:4000/v1"
+# Optional local backup gateway. Primary traffic uses per-model base_url in
+# config.example.yaml / opencode.json (keys only via env).
+LOCAL_GATEWAY_URL = "http://127.0.0.1:8000/v1"
 GATEWAY_URL_ENV = "PRD_AI_GATEWAY_URL"
 GATEWAY_KEY_ENV = "PRD_AI_GATEWAY_KEY"
+
+# Product endpoints — keys never stored in git, only env var *names*.
+XIXI_BASE_URL = "https://xixiapi.io/v1"
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+XIXI_KEY_ENV = "PRD_SFP_XIXI_KEY"
+OPENROUTER_KEY_ENV = "PRD_SFP_OPENROUTER_KEY"
+PRIMARY_MODEL = "claude-opus-5"
+ADVISOR_SONNET_MODEL = "claude-sonnet-5"
+ADVISOR_GROK_MODEL = "x-ai/grok-4.6"
 
 
 class ConfigError(ValueError):
@@ -163,15 +173,33 @@ def default_offline_config(workspace: str = ".prd-ai-battle") -> AppConfig:
 
 
 def default_live_config(workspace: str = ".prd-ai-battle") -> AppConfig:
-    """Local gateway defaults — still no vendor hostnames."""
+    """Live product models. Keys come from env; never from this file's values."""
     cfg = AppConfig(
         workspace=workspace,
         offline=False,
         gateway=GatewayConfig(),
-        primary=ModelConfig(id="primary", model="primary"),
+        primary=ModelConfig(
+            id="primary",
+            model=PRIMARY_MODEL,
+            base_url=XIXI_BASE_URL,
+            api_key_env=XIXI_KEY_ENV,
+            temperature=0.3,
+        ),
         advisors=[
-            ModelConfig(id="advisor-a", model="advisor-a"),
-            ModelConfig(id="advisor-b", model="advisor-b"),
+            ModelConfig(
+                id="advisor-sonnet",
+                model=ADVISOR_SONNET_MODEL,
+                base_url=XIXI_BASE_URL,
+                api_key_env=XIXI_KEY_ENV,
+                temperature=0.5,
+            ),
+            ModelConfig(
+                id="advisor-grok",
+                model=ADVISOR_GROK_MODEL,
+                base_url=OPENROUTER_BASE_URL,
+                api_key_env=OPENROUTER_KEY_ENV,
+                temperature=0.5,
+            ),
         ],
     )
     return cfg.resolve()

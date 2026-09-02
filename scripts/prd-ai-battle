@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Branded launcher: run OpenCode as prd-ai-battle from this repo.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+export PRD_AI_ROOT="$ROOT"
+export PYTHONPATH="${ROOT}/src${PYTHONPATH:+:$PYTHONPATH}"
+export PRD_AI_PYTHON="${PRD_AI_PYTHON:-python3}"
+export OPENCODE_EXPERIMENTAL_AGENT_TEAMS="${OPENCODE_EXPERIMENTAL_AGENT_TEAMS:-1}"
+cd "$ROOT"
+if ! command -v opencode >/dev/null 2>&1 && ! command -v opencode2 >/dev/null 2>&1; then
+  cat <<'EOF' >&2
+prd-ai-battle uses OpenCode as its TUI shell (Mac only).
+
+  brew install anomalyco/tap/opencode
+
+Then from this repo:
+
+  export PRD_SFP_XIXI_KEY=...
+  export PRD_SFP_OPENROUTER_KEY=...
+  ./scripts/prd-ai-battle
+EOF
+  exit 1
+fi
+BIN="$(command -v opencode || command -v opencode2)"
+exec "$BIN" "$@"

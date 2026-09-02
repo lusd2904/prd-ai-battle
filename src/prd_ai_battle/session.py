@@ -28,21 +28,29 @@ from prd_ai_battle.write_lock import ArtifactWriter, WriteDenied, WriteLock
 class Session:
     def __init__(self, config: AppConfig, root: Path | None = None) -> None:
         self.config = config
-        self.state = SessionState(
+        self.store = WorkspaceStore(Path(root) if root is not None else Path(config.workspace))
+        fallback = SessionState(
             primary=config.primary.id,
             advisors=[a.id for a in config.advisors],
             phase=Phase.DISCUSS,
             write_lock=True,
         )
-        self.store = WorkspaceStore(Path(root) if root is not None else Path(config.workspace))
-        self.store.init(self.state)
-        self.machine = StateMachine(self.state)
-        self.lock = WriteLock(self.state)
-        self.writer = ArtifactWriter(self.store.drafts_dir, self.lock, self.machine)
+        self.store.init(fallback)
+        self.state = self.store.load_state(fallback) if self.store.meta_path.exists() else fallback
+        if not self.store.meta_path.exists():
+            self.store.save_state(self.state)
+        self._bind()
         self.client: ChatClient = MockChatClient() if config.offline else ChatClient()
         self.requirement: str = ""
         self._buffers: dict[str, str] = {}
         self.last_write_path: Path | None = None
+        if self.store.requirement_path.exists() and not self.requirement:
+            self.requirement = self.store.requirement_path.read_text(encoding="utf-8")
+
+    def _bind(self) -> None:
+        self.machine = StateMachine(self.state)
+        self.lock = WriteLock(self.state)
+        self.writer = ArtifactWriter(self.store.drafts_dir, self.lock, self.machine)
 
     @property
     def brief(self) -> Brief | None:
@@ -129,6 +137,32 @@ class Session:
             matrix=self.state.matrix,
             chapter_diff=chapter_diffs(previous, current),
         )
+
+    def write_review_packet(self) -> Path:
+        """Persist the only review-phase advisor input (brief + matrix + chapter_diff)."""
+        from prd_ai_battle.bridge import review_packet_path
+
+        packet = self.build_review_packet()
+        dest = review_packet_path(self.store.root)
+        dest.write_text(packet.as_prompt(), encoding="utf-8")
+        return dest
+
+    def notice_external_write(self, relative_or_absolute: str | Path, *, actor_id: str | None = None) -> Path:
+        """Record a draft written by OpenCode's write tool after write-check passed."""
+        actor = actor_id or self.state.primary
+        self.lock.assert_can_write(actor, self.machine)
+        path = Path(relative_or_absolute)
+        if not path.is_absolute():
+            path = self.store.root / path
+        version = self.store.latest_version() + 1
+        label = f"v{version}"
+        self.machine.record_draft(label)
+        self.store.register_draft(
+            self.state,
+            DraftVersion(version=version, path=str(path), written_by=actor, note="opencode"),
+        )
+        self.persist()
+        return path
 
     def _tools_map(self, model_ids: list[str]) -> dict[str, list[str]]:
         out: dict[str, list[str]] = {}

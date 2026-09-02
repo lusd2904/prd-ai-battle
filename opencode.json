@@ -1,0 +1,237 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "prd-xixi/claude-opus-5",
+  "default_agent": "primary",
+  "autoupdate": false,
+  "share": "disabled",
+  "instructions": ["AGENTS.md"],
+  "provider": {
+    "prd-xixi": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "xixiapi.io",
+      "env": ["PRD_SFP_XIXI_KEY"],
+      "options": {
+        "baseURL": "https://xixiapi.io/v1",
+        "apiKey": "{env:PRD_SFP_XIXI_KEY}"
+      },
+      "models": {
+        "claude-opus-5": {
+          "name": "Claude Opus 5 (primary)"
+        },
+        "claude-sonnet-5": {
+          "name": "Claude Sonnet 5 (advisor)"
+        }
+      }
+    },
+    "prd-openrouter": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "OpenRouter",
+      "env": ["PRD_SFP_OPENROUTER_KEY"],
+      "options": {
+        "baseURL": "https://openrouter.ai/api/v1",
+        "apiKey": "{env:PRD_SFP_OPENROUTER_KEY}"
+      },
+      "models": {
+        "x-ai/grok-4.6": {
+          "name": "Grok 4.6 (advisor)"
+        }
+      }
+    },
+    "prd-gateway": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Local backup gateway",
+      "env": ["PRD_AI_GATEWAY_KEY"],
+      "options": {
+        "baseURL": "http://127.0.0.1:8000/v1",
+        "apiKey": "{env:PRD_AI_GATEWAY_KEY}"
+      },
+      "models": {
+        "claude-opus-5": { "name": "Backup Opus 5" },
+        "claude-sonnet-5": { "name": "Backup Sonnet 5" }
+      }
+    }
+  },
+  "providers": {
+    "prd-xixi": {
+      "name": "xixiapi.io",
+      "env": ["PRD_SFP_XIXI_KEY"],
+      "package": "@opencode-ai/ai/providers/openai-compatible",
+      "settings": {
+        "baseURL": "https://xixiapi.io/v1",
+        "apiKey": "{env:PRD_SFP_XIXI_KEY}"
+      },
+      "models": {
+        "claude-opus-5": { "name": "Claude Opus 5 (primary)" },
+        "claude-sonnet-5": { "name": "Claude Sonnet 5 (advisor)" }
+      }
+    },
+    "prd-openrouter": {
+      "name": "OpenRouter",
+      "env": ["PRD_SFP_OPENROUTER_KEY"],
+      "package": "@opencode-ai/ai/providers/openai-compatible",
+      "settings": {
+        "baseURL": "https://openrouter.ai/api/v1",
+        "apiKey": "{env:PRD_SFP_OPENROUTER_KEY}"
+      },
+      "models": {
+        "x-ai/grok-4.6": { "name": "Grok 4.6 (advisor)" }
+      }
+    },
+    "prd-gateway": {
+      "name": "Local backup gateway",
+      "env": ["PRD_AI_GATEWAY_KEY"],
+      "package": "@opencode-ai/ai/providers/openai-compatible",
+      "settings": {
+        "baseURL": "http://127.0.0.1:8000/v1",
+        "apiKey": "{env:PRD_AI_GATEWAY_KEY}"
+      },
+      "models": {
+        "claude-opus-5": { "name": "Backup Opus 5" },
+        "claude-sonnet-5": { "name": "Backup Sonnet 5" }
+      }
+    }
+  },
+  "agent": {
+    "primary": {
+      "description": "Lead drafter. Writes files only in execute/revise (enforced by write_lock).",
+      "mode": "primary",
+      "model": "prd-xixi/claude-opus-5",
+      "prompt": "{file:./.opencode/prompts/primary.txt}",
+      "permission": {
+        "edit": "allow",
+        "bash": "allow",
+        "task": {
+          "advisor-sonnet": "allow",
+          "advisor-grok": "allow"
+        }
+      }
+    },
+    "advisor-sonnet": {
+      "description": "Advisor (Claude Sonnet 5). Discuss and review only. Never edits files.",
+      "mode": "all",
+      "model": "prd-xixi/claude-sonnet-5",
+      "prompt": "{file:./.opencode/prompts/advisor.txt}",
+      "permission": {
+        "edit": "deny",
+        "bash": "deny"
+      },
+      "tools": {
+        "write": false,
+        "edit": false,
+        "bash": false
+      }
+    },
+    "advisor-grok": {
+      "description": "Advisor (Grok 4.6). Discuss and review only. Never edits files.",
+      "mode": "all",
+      "model": "prd-openrouter/x-ai/grok-4.6",
+      "prompt": "{file:./.opencode/prompts/advisor.txt}",
+      "permission": {
+        "edit": "deny",
+        "bash": "deny"
+      },
+      "tools": {
+        "write": false,
+        "edit": false,
+        "bash": false
+      }
+    },
+    "build": {
+      "mode": "primary",
+      "model": "prd-xixi/claude-opus-5",
+      "permission": {
+        "edit": "ask"
+      }
+    }
+  },
+  "agents": {
+    "primary": {
+      "description": "Lead drafter. Writes files only in execute/revise (enforced by write_lock).",
+      "mode": "primary",
+      "model": "prd-xixi/claude-opus-5",
+      "system": "You are the primary / lead of prd-ai-battle. See AGENTS.md.",
+      "permissions": [
+        { "action": "subagent", "resource": "*", "effect": "deny" },
+        { "action": "subagent", "resource": "advisor-sonnet", "effect": "allow" },
+        { "action": "subagent", "resource": "advisor-grok", "effect": "allow" }
+      ]
+    },
+    "advisor-sonnet": {
+      "description": "Advisor (Claude Sonnet 5). Discuss and review only. Never edits files.",
+      "mode": "all",
+      "model": "prd-xixi/claude-sonnet-5",
+      "system": "You are advisor-sonnet. You never edit files or run shell. See AGENTS.md.",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "*", "effect": "deny" }
+      ]
+    },
+    "advisor-grok": {
+      "description": "Advisor (Grok 4.6). Discuss and review only. Never edits files.",
+      "mode": "all",
+      "model": "prd-openrouter/x-ai/grok-4.6",
+      "system": "You are advisor-grok. You never edit files or run shell. See AGENTS.md.",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "*", "effect": "deny" }
+      ]
+    }
+  },
+  "permission": {
+    "edit": "ask"
+  },
+  "permissions": [
+    { "action": "read", "resource": "*.env", "effect": "deny" },
+    { "action": "read", "resource": "*.env.*", "effect": "deny" }
+  ],
+  "command": {
+    "discuss": {
+      "description": "Parallel multi-model discussion (tools=[], no writes)",
+      "agent": "primary",
+      "template": "Run the discuss phase. See AGENTS.md."
+    },
+    "lock": {
+      "description": "Lock the 响应对照表 → phase=locked",
+      "agent": "primary"
+    },
+    "execute": {
+      "description": "Primary writes v1 (write_lock opens for primary only)",
+      "agent": "primary"
+    },
+    "review": {
+      "description": "Advisors review brief + matrix + chapter_diff only",
+      "agent": "primary"
+    },
+    "revise": {
+      "description": "Primary writes the next artifact_version",
+      "agent": "primary"
+    }
+  },
+  "commands": {
+    "discuss": {
+      "description": "Parallel multi-model discussion (tools=[], no writes)",
+      "agent": "primary",
+      "template": "Run the discuss phase. See AGENTS.md."
+    },
+    "lock": {
+      "description": "Lock the 响应对照表 → phase=locked",
+      "agent": "primary",
+      "template": "Lock the compliance matrix. See AGENTS.md."
+    },
+    "execute": {
+      "description": "Primary writes v1 (write_lock opens for primary only)",
+      "agent": "primary",
+      "template": "Enter execute. Only primary may write. See AGENTS.md."
+    },
+    "review": {
+      "description": "Advisors review brief + matrix + chapter_diff only",
+      "agent": "primary",
+      "template": "Enter review with brief+matrix+chapter_diff only. See AGENTS.md."
+    },
+    "revise": {
+      "description": "Primary writes the next artifact_version",
+      "agent": "primary",
+      "template": "Enter revise. Only primary may write. See AGENTS.md."
+    }
+  }
+}

@@ -32,7 +32,7 @@
       "properties": {
         "base_url": {
           "type": "string",
-          "description": "OpenAI-compatible Chat Completions root. Default is the loopback gateway via PRD_AI_GATEWAY_URL. Do not hardcode vendor or tunnel hosts in the repo."
+          "description": "OpenAI-compatible Chat Completions root. Live defaults are per-model (xixiapi.io / openrouter.ai) via config.example.yaml and opencode.json. Backup gateway is loopback via PRD_AI_GATEWAY_URL. Do not commit API keys."
         },
         "api_key": {
           "type": "string",
@@ -59,7 +59,7 @@
         },
         "api_key_env": {
           "type": "string",
-          "description": "Optional environment variable name to read the key from (alternative to api_key)."
+          "description": "Environment variable name for the key (PRD_SFP_XIXI_KEY, PRD_SFP_OPENROUTER_KEY, PRD_AI_GATEWAY_KEY). Never commit the value."
         },
         "model": {
           "type": "string",
