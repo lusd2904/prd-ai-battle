@@ -31,7 +31,7 @@ prd-ai-battle = "prd_ai_battle.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-prd_ai_battle = ["py.typed", "tui/*.tcss", "data/*.md"]
+prd_ai_battle = ["py.typed", "tui/*.tcss", "data/*.md", "web/static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -2,7 +2,7 @@
 
 This repository **is the product**. The user-facing skin is the Chinese **Textual board**: left **项目** list, one shared labeled timeline, yaml speaker colors, phase rail, and who holds `write_lock` always visible. [OpenCode](https://opencode.ai) stays the execute/revise engine (`prd-ai-battle launch` / slash-command plugin) — not a second window. We do not ship an npm plugin, and we do not grow OpenCode teammate panes.
 
-Mac. Clone this repo, save local config, run `prd-ai-battle`. That opens the board. `write_lock` binds to **whatever primary id is in your last-saved yaml**.
+Mac. Clone this repo, save local config, run `prd-ai-battle` (or `cd crates/prd-board-macos && cargo run`). That opens the board. `write_lock` binds to **whatever primary id is in your last-saved yaml**.
 
 ```
 discuss → locked → execute (primary writes v1)
@@ -132,15 +132,35 @@ prd-ai-battle                      # 打开产品看板
 prd-ai-battle --offline            # 看板离线（模拟模型，无网络）
 # or: ./scripts/prd-ai-battle
 prd-ai-battle launch               # OpenCode 执行/修订引擎（可选）
+prd-ai-battle web                  # 只读对照表 http://127.0.0.1:1780（绝不 0.0.0.0 / 8080）
+cd crates/prd-board-macos && cargo run   # Mac 窗口：PTY 套住同一套 TUI
 ```
 
 `prd-ai-battle` opens the board. Seed ids are `primary` + `advisor-sonnet` + `advisor-grok` until you change them. OpenCode is optional and used for `/execute` / `/revise` when you launch the engine.
 
+## Mac 窗口（PTY，不是第二套写入）
+
+本机可见窗口是 `crates/prd-board-macos`：用 PTY 套住产品 Textual TUI，**不自己写稿**。写入仍走 Python 的 `prd-ai-battle write-check`。顾问仍是 `tools: []`。`/lock` 之后对照表条款不能从该窗口另开编辑器改。
+
+```bash
+cd crates/prd-board-macos
+cargo run                  # 优先 .venv/bin/prd-ai-battle
+cargo run -- --offline
+cargo run -- --matrix      # 打开/打印 http://127.0.0.1:1780
+cargo run -- --docker      # 回退到 docker compose run --rm prd-ai-battle
+```
+
+可选只读对照表（本机回环，绝不绑定 `0.0.0.0`，绝不占用 `8080` / `12580` / `3000` / `8008` / `8000`）：
+
+```bash
+prd-ai-battle web          # http://127.0.0.1:1780
+```
+
 ## Docker（本机看板，不是云部署）
 
-Docker 是本仓库的**本机交付面**：重建 `prd-ai-battle:local`，用交互式 TTY 打开中文看板。不要做 cloud-host / PaaS 部署。密钥只放在宿主机的 gitignored 文件里，**不要写进镜像或 git**。
+Docker 是本仓库的**本机 TTY 交付面**：重建 `prd-ai-battle:local`，用交互式 TTY 打开中文看板。Mac 上要一个常驻窗口，用上面的 `cargo run`，不要做 cloud-host / PaaS 部署。密钥只放在宿主机的 gitignored 文件里，**不要写进镜像或 git**。
 
-Desktop 里看到镜像过期、且没有正在运行的容器，是因为看板**不是后台服务**。请重建后再 `run`，不要 `docker compose up -d`：
+Desktop 里看到镜像过期、且没有正在运行的容器，是因为看板**不是后台服务**。请重建后再 `run`，不要 `docker compose up -d`（也不要发布 0.0.0.0:8080）：
 
 ```bash
 docker compose build
@@ -313,8 +333,10 @@ src/prd_ai_battle/
   llm.py           # OpenAI-compatible SSE; advisors get tools: []
   session.py       # group-chat discuss + interrupt
   tui/app.py       # product board (project list + one timeline)
+  web/             # read-only 对照表 at 127.0.0.1:1780
   projects.py      # mounted projects; isolated yaml/env/workspace
   data/tender.md   # bundled sample
+crates/prd-board-macos/  # Mac PTY window around the TUI
 .opencode/
   opencode.json    # providers, agents, commands (app overlay)
   agents/          # primary + two advisors

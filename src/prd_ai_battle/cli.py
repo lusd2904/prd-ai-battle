@@ -1,4 +1,4 @@
-"""CLI: product board (default) | export | ingest | phase | write-check | OpenCode engine."""
+"""CLI: product board (default) | web 对照表 | export | ingest | phase | write-check | OpenCode engine."""
 
 from __future__ import annotations
 
@@ -45,6 +45,13 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command")
     sub.add_parser("launch", help="启动 OpenCode 执行/修订引擎（非默认界面）。", parents=[common])
     sub.add_parser("tui", help="打开产品看板（默认；一条时间线 + 阶段轨）。", parents=[common])
+    web = sub.add_parser(
+        "web",
+        help="只读对照表：本机 http://127.0.0.1:1780（绝不绑定 0.0.0.0 / 8080）。",
+        parents=[common],
+    )
+    web.add_argument("--host", default="127.0.0.1", help="仅 127.0.0.1 / localhost")
+    web.add_argument("--port", type=int, default=1780, help="仅 1780")
     sub.add_parser("demo", help="Run the offline discuss → lock → write → review pipeline.", parents=[common])
     sub.add_parser("init", help="Write config.example.yaml → ./prd-ai-battle.yaml")
     sub.add_parser("doctor", help="Print resolved provider base_url (keys redacted).", parents=[common])
@@ -238,6 +245,25 @@ def cmd_ping(args) -> int:
     report = ping_config(cfg, skip_http=offline)
     print(json.dumps(report, indent=2))
     return 0 if report.get("ok") else 1
+
+
+def cmd_web(args) -> int:
+    """Read-only 对照表 on 127.0.0.1:1780. Does not write drafts or loosen write_lock."""
+    from prd_ai_battle.web.server import BindError, serve
+
+    workspace = Path(args.workspace) if args.workspace else Path(".prd-ai-battle")
+    try:
+        serve(
+            host=getattr(args, "host", "127.0.0.1"),
+            port=int(getattr(args, "port", 1780)),
+            workspace=workspace,
+            search_root=Path.cwd(),
+            production=True,
+        )
+    except BindError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    return 0
 
 
 def cmd_tui(args) -> int:
@@ -521,6 +547,8 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(cmd_ping(args))
     if command == "tui":
         raise SystemExit(cmd_tui(args))
+    if command == "web":
+        raise SystemExit(cmd_web(args))
     if command == "ingest":
         raise SystemExit(cmd_ingest(args))
     if command == "discuss":

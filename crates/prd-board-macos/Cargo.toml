@@ -1,0 +1,22 @@
+[package]
+name = "prd-board-macos"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "macOS window: PTY shell around the product Textual TUI. Not a second write stack."
+publish = false
+repository = "https://github.com/lusd2904/prd-ai-battle"
+
+[dependencies]
+anyhow = "1"
+crossterm = "0.28"
+portable-pty = "0.8"
+signal-hook = "0.3"
+
+[lib]
+name = "prd_board_macos"
+path = "src/lib.rs"
+
+[[bin]]
+name = "prd-board-macos"
+path = "src/main.rs"

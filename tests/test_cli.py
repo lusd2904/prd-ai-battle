@@ -130,12 +130,36 @@ def test_default_and_tui_open_the_board_not_opencode(monkeypatch):
     assert called == ["launch"]
 
 
+def test_web_command_does_not_open_tui(monkeypatch):
+    called: list[str] = []
+
+    def fake_tui(args):
+        called.append("tui")
+        return 0
+
+    def fake_web(args):
+        called.append("web")
+        return 0
+
+    monkeypatch.setattr("prd_ai_battle.cli.cmd_tui", fake_tui)
+    monkeypatch.setattr("prd_ai_battle.cli.cmd_web", fake_web)
+    with pytest.raises(SystemExit) as exc:
+        main(["web"])
+    assert exc.value.code == 0
+    assert called == ["web"]
+    args = build_parser().parse_args(["web"])
+    assert args.host == "127.0.0.1"
+    assert args.port == 1780
+
+
 def test_help_offline_is_not_demo():
     help_text = build_parser().format_help()
     assert "optional Textual demo" not in help_text
     assert "离线" in help_text
     assert "产品看板" in help_text
     assert "export" in help_text
+    assert "web" in help_text
+    assert "1780" in help_text
 
 
 def test_branded_script_does_not_force_launch():

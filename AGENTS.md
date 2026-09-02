@@ -34,7 +34,9 @@ Seed snapshot (changeable):
 
 ## Docker (local only)
 
-`Dockerfile` / `docker-compose.yml` deliver the Chinese board on the Mac (`docker compose build && docker compose run --rm prd-ai-battle`). Default CMD is the board, not `discuss --offline`. Container speakers are HTTP (xixi / OpenRouter); Mac CLI binaries stay on the host. No cloud-host deploy. No secrets in git or the image.
+`Dockerfile` / `docker-compose.yml` deliver the Chinese TUI on the Mac (`docker compose build && docker compose run --rm prd-ai-battle`). Default CMD is the board, not `discuss --offline`. Container speakers are HTTP (xixi / OpenRouter); Mac CLI binaries stay on the host. No cloud-host deploy. No secrets in git or the image. Do not bind `0.0.0.0` or port `8080`. Do not touch 金融台 containers.
+
+The Mac **window** is `crates/prd-board-macos` (`cargo run` on a Mac): a PTY around `prd-ai-battle` (prefer `.venv`, else `docker compose run`). It must not write drafts; `write-check` stays in Python. Optional read-only 对照表: `prd-ai-battle web` at `http://127.0.0.1:1780` only.
 
 ## Drafts
 

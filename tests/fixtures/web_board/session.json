@@ -1,0 +1,75 @@
+{
+  "phase": "review",
+  "primary": "primary",
+  "advisors": ["advisor-sonnet", "advisor-grok"],
+  "brief": {
+    "title": "VPN 专线时延",
+    "summary": "专线时延≤20ms，必须响应等保与存储条款。",
+    "toc": ["第一章 需求", "第二章 评分"],
+    "scoring_points": [],
+    "disqualifiers": [],
+    "starred_requirements": ["时延≤20ms"],
+    "requirement_clauses": [],
+    "source_path": "",
+    "extracted_at": "2026-09-02T12:00:00+00:00"
+  },
+  "matrix": {
+    "title": "响应对照表",
+    "locked": true,
+    "locked_at": "2026-09-02T12:10:00+00:00",
+    "version": 1,
+    "rows": [
+      {
+        "clause_id": "S01",
+        "clause": "时延≤20ms",
+        "responded": "yes",
+        "evidence_page": "12",
+        "opinion": "承诺专线 SLA",
+        "status": "locked",
+        "category": "requirement"
+      },
+      {
+        "clause_id": "S02",
+        "clause": "等保三级",
+        "responded": "partial",
+        "evidence_page": "18",
+        "opinion": "补齐测评计划",
+        "status": "locked",
+        "category": "requirement"
+      }
+    ]
+  },
+  "artifact_version": "v1",
+  "write_lock": true,
+  "requirement_path": "",
+  "created_at": "2026-09-02T12:00:00+00:00",
+  "updated_at": "2026-09-02T12:20:00+00:00",
+  "draft_versions": [
+    {
+      "version": 1,
+      "path": "drafts/v1/response.md",
+      "created_at": "2026-09-02T12:15:00+00:00",
+      "written_by": "primary",
+      "note": ""
+    }
+  ],
+  "timeline": [
+    {
+      "ts": "2026-09-02T12:05:00+00:00",
+      "model_id": "primary",
+      "role": "assistant",
+      "phase": "discuss",
+      "content": "先锁时延与等保。",
+      "done": true
+    },
+    {
+      "ts": "2026-09-02T12:06:00+00:00",
+      "model_id": "advisor-sonnet",
+      "role": "assistant",
+      "phase": "discuss",
+      "content": "同意。存储条款也要写进对照表。",
+      "done": true
+    }
+  ],
+  "extra": {}
+}

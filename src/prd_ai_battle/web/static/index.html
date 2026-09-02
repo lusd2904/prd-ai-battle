@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>prd-ai-battle 对照表</title>
+  <style>
+    :root {
+      --bg: #0d1117; --panel: #161b22; --border: #30363d; --text: #e6edf3;
+      --muted: #8b949e; --accent: #58a6ff; --user: #3fb950;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 14px/1.45 ui-sans-serif, system-ui, sans-serif; background: var(--bg); color: var(--text); }
+    header { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+    h1 { font-size: 16px; margin: 0; }
+    .rail { display: flex; gap: 8px; align-items: center; color: var(--muted); }
+    .rail .on { color: var(--accent); font-weight: 700; }
+    .meta { color: var(--muted); margin-left: auto; }
+    .layout { display: grid; grid-template-columns: 200px 1fr; min-height: calc(100vh - 54px); }
+    aside { border-right: 1px solid var(--border); padding: 12px; background: var(--panel); }
+    aside h2 { font-size: 13px; margin: 0 0 8px; color: var(--muted); }
+    .proj { display: block; width: 100%; text-align: left; background: transparent; color: var(--text); border: 1px solid transparent; padding: 8px 10px; border-radius: 6px; cursor: pointer; }
+    .proj.active { border-color: var(--accent); background: #12253d; }
+    main { padding: 16px; display: flex; flex-direction: column; gap: 18px; }
+    section h2 { font-size: 14px; margin: 0 0 8px; }
+    table { width: 100%; border-collapse: collapse; background: var(--panel); }
+    th, td { border: 1px solid var(--border); padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { color: var(--muted); font-weight: 600; }
+    .bubble { border-left: 3px solid var(--accent); padding: 8px 10px; margin: 0 0 10px; background: var(--panel); }
+    .bubble header { border: 0; padding: 0 0 4px; color: var(--muted); }
+    pre { white-space: pre-wrap; background: var(--panel); padding: 12px; border: 1px solid var(--border); overflow: auto; }
+    .empty { color: var(--muted); }
+    .lock { color: #f2cc60; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>prd-ai-battle</h1>
+    <div class="rail" id="rail"></div>
+    <div class="meta" id="meta">只读 · 127.0.0.1:1780</div>
+  </header>
+  <div class="layout">
+    <aside>
+      <h2>项目</h2>
+      <div id="projects"></div>
+    </aside>
+    <main>
+      <section>
+        <h2>对照表 <span class="lock" id="lock"></span></h2>
+        <div id="matrix"></div>
+      </section>
+      <section>
+        <h2>时间线</h2>
+        <div id="timeline"></div>
+      </section>
+      <section>
+        <h2>最新稿件 <span id="draft-ver"></span></h2>
+        <pre id="draft" class="empty">尚无稿件</pre>
+      </section>
+    </main>
+  </div>
+  <script>
+    const q = new URLSearchParams(location.search);
+    let project = q.get("project") || "default";
+
+    function esc(s) {
+      return String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+    }
+
+    async function load() {
+      const res = await fetch("/api/board?project=" + encodeURIComponent(project));
+      const data = await res.json();
+      const steps = (data.phase.steps || []).map(s =>
+        `<span class="${s.current ? "on" : ""}">${s.current ? "● " : ""}${esc(s.label)}</span>`
+      );
+      document.getElementById("rail").innerHTML = steps.join(" → ");
+      document.getElementById("meta").textContent =
+        `阶段 ${data.phase.label} · 对照表${data.matrix.lock_label} · 写入 ${data.phase.primary || "—"} · 只读`;
+      const box = document.getElementById("projects");
+      box.innerHTML = (data.projects || []).map(p =>
+        `<button class="proj ${p.id === data.active_id ? "active" : ""}" data-id="${esc(p.id)}">${esc(p.name)}</button>`
+      ).join("") || `<div class="empty">默认项目</div>`;
+      box.querySelectorAll(".proj").forEach(btn => {
+        btn.onclick = () => { project = btn.dataset.id; history.replaceState(null, "", "?project=" + project); load(); };
+      });
+      document.getElementById("lock").textContent = data.matrix.locked ? "已锁定（条款不可改）" : "未锁定";
+      const cols = data.matrix.columns || ["条款", "是否响应", "证据页码", "意见", "状态"];
+      const rows = data.matrix.rows || [];
+      if (!rows.length) {
+        document.getElementById("matrix").innerHTML = `<p class="empty">尚无对照表。</p>`;
+      } else {
+        document.getElementById("matrix").innerHTML =
+          `<table><thead><tr>${cols.map(c => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>` +
+          rows.map(r => `<tr><td>${esc(r.clause_id)} ${esc(r.clause)}</td><td>${esc(r.responded)}</td><td>${esc(r.evidence_page)}</td><td>${esc(r.opinion)}</td><td>${esc(r.status)}</td></tr>`).join("") +
+          `</tbody></table>`;
+      }
+      const msgs = (data.timeline && data.timeline.messages) || [];
+      document.getElementById("timeline").innerHTML = msgs.length
+        ? msgs.map(m => `<article class="bubble" style="border-color:${esc(m.color)}"><header>[${esc(m.label)}]</header><div>${esc(m.content)}</div></article>`).join("")
+        : `<p class="empty">尚无讨论。</p>`;
+      const d = data.draft || {};
+      document.getElementById("draft-ver").textContent = d.version || "";
+      const pre = document.getElementById("draft");
+      if (d.content) { pre.textContent = d.content; pre.classList.remove("empty"); }
+      else { pre.textContent = "尚无稿件"; pre.classList.add("empty"); }
+    }
+    load();
+    setInterval(load, 3000);
+  </script>
+</body>
+</html>
