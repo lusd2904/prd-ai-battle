@@ -1,4 +1,4 @@
-"""Launch OpenCode as the prd-ai-battle product shell (Mac)."""
+"""Launch OpenCode as the execute/revise engine (not the product board)."""
 
 from __future__ import annotations
 
@@ -7,9 +7,14 @@ import shutil
 import sys
 from pathlib import Path
 
-INSTALL_HINT = """prd-ai-battle uses OpenCode as its TUI shell.
+INSTALL_HINT = """prd-ai-battle launch 启动 OpenCode 执行/修订引擎（不是产品看板）。
 
-This product runs on Mac only. Install OpenCode, then relaunch from this repo:
+产品看板不需要 OpenCode：
+
+  prd-ai-battle            # 打开看板
+  prd-ai-battle --offline  # 看板离线（模拟模型，无网络）
+
+若要用 OpenCode 写稿，先安装再 launch：
 
   brew install anomalyco/tap/opencode
 
@@ -20,11 +25,9 @@ This product runs on Mac only. Install OpenCode, then relaunch from this repo:
   cp prd-ai-battle.env.example prd-ai-battle.env   # fill keys; do not commit
   prd-ai-battle config set --primary-key ... --advisor-id advisor-grok --key ...
   prd-ai-battle ping
-  prd-ai-battle
+  prd-ai-battle launch
 
-Do not deploy this to a cloud VM. The Textual demo is still available with:
-
-  prd-ai-battle --offline
+Do not deploy this to a cloud VM.
 """
 
 

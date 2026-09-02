@@ -8,7 +8,7 @@ import pytest
 
 from prd_ai_battle.cli import build_parser, cmd_discuss_stream
 from prd_ai_battle.config import AppConfig, GatewayConfig, LOCAL_GATEWAY_URL, ModelConfig
-from prd_ai_battle.llm import MockChatClient
+from prd_ai_battle.llm import MockChatClient, opening_marker
 from prd_ai_battle.models import Phase, render_timeline
 from prd_ai_battle.session import Session
 
@@ -154,3 +154,78 @@ async def test_advisors_still_tools_empty_on_shared_timeline(tmp_path: Path):
     assert session.state.phase is Phase.DISCUSS
     assert not session.state.allows_write("lead")
     assert not session.state.allows_write("adv-1")
+
+
+@pytest.mark.asyncio
+async def test_crossing_round_quotes_other_speakers_round0(tmp_path: Path):
+    """After round 1, a speaker's second utterance must contain another mouth's round-0 marker."""
+    session = _session(tmp_path, n=2)
+    speakers = session.speakers()
+    assert len(speakers) >= 3  # lead + 2 advisors
+
+    async for _ in session.discuss("opening brief", crossing=False):
+        pass
+    round0 = [m for m in session.load_timeline() if m.role == "assistant"]
+    assert {m.model_id for m in round0} == set(speakers)
+    for msg in round0:
+        assert opening_marker(msg.model_id) in msg.content
+
+    async for _ in session.discuss("cross the thread", crossing=True):
+        pass
+
+    by_speaker: dict[str, list[str]] = {sid: [] for sid in speakers}
+    for msg in session.load_timeline():
+        if msg.role == "assistant":
+            by_speaker[msg.model_id].append(msg.content)
+    for sid, turns in by_speaker.items():
+        assert len(turns) >= 2, sid
+    # Pick any speaker's second utterance; it must quote someone else's round-0 bubble.
+    other = speakers[0]
+    reply = by_speaker[speakers[1]][1]
+    assert opening_marker(other) in reply
+    assert session.state.phase is Phase.DISCUSS
+    assert session.state.write_lock is True
+    assert not session.state.allows_write(session.state.primary)
+    assert not (session.store.root / "teammates").exists()
+    assert list(session.store.root.glob("**/teammate*")) == []
+    assert session.store.latest_version() == 0
+
+
+@pytest.mark.asyncio
+async def test_discuss_group_does_opening_then_crossing(tmp_path: Path):
+    session = _session(tmp_path, n=2)
+    async for _ in session.discuss_group("first D"):
+        pass
+    assistants = [m for m in session.load_timeline() if m.role == "assistant"]
+    by_speaker: dict[str, list[str]] = {}
+    for msg in assistants:
+        by_speaker.setdefault(msg.model_id, []).append(msg.content)
+    assert all(len(v) == 2 for v in by_speaker.values())
+    lead_second = by_speaker["lead"][1]
+    assert any(opening_marker(sid) in lead_second for sid in ("adv-1", "adv-2"))
+
+
+@pytest.mark.asyncio
+async def test_discuss_interrupt_keeps_partials_no_writes(tmp_path: Path):
+    session = _session(tmp_path, n=2)
+    session.client = MockChatClient(delay_s=0.03)
+    seen = 0
+
+    async for event in session.discuss_group("please stop"):
+        if event.text:
+            seen += 1
+        if seen >= 2:
+            session.request_stop()
+
+    assert seen >= 1
+    assert session.state.phase is Phase.DISCUSS
+    assert session.state.write_lock is True
+    assert not session.state.allows_write(session.state.primary)
+    timeline = session.load_timeline()
+    assert any(m.role == "user" for m in timeline)
+    assert any(m.role == "assistant" and m.content.strip() for m in timeline)
+    assert session.store.latest_version() == 0
+    assert list(session.store.drafts_dir.glob("**/response.md")) == []
+    assert not (session.store.root / "teammates").exists()
+    assert list(session.store.root.glob("session-*.json")) == []
+    assert list(session.store.root.glob("**/teammate*")) == []

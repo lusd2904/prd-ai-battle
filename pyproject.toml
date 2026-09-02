@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "prd-ai-battle"
 version = "0.1.0"
-description = "OpenCode-based multi-model PRD / bid drafting (Mac). Python library + branded OpenCode workspace."
+description = "Chinese Textual board for multi-model bid drafting. OpenCode is the execute/revise engine."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

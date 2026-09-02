@@ -183,7 +183,42 @@ async def test_tui_n_advisors_mount_distinct_speaker_classes(tmp_path: Path):
         assert "speaker-2" in mounted["advisor-kimi"].classes
 
 
-async def _wait_idle(app: BattleApp, pilot, ticks: int = 40) -> None:
+async def test_tui_escape_stops_discuss_keeps_timeline(tmp_path: Path):
+    cfg = default_offline_config(str(tmp_path))
+    app = BattleApp(cfg)
+    app.session.client.delay_s = 0.04  # type: ignore[attr-defined]
+    async with app.run_test(size=(140, 40)) as pilot:
+        app.action_load_sample()
+        await pilot.pause()
+        app.action_discuss()
+        await pilot.pause(0.08)
+        assert app._busy
+        app.action_stop_discuss()
+        await _wait_idle(app, pilot, ticks=80)
+        assert app.session.state.phase is Phase.DISCUSS
+        assert app.session.state.write_lock is True
+        assert not app.session.state.allows_write(app.session.state.primary)
+        assert any(b.body.strip() for b in app.query(Bubble))
+        assert app.session.store.latest_version() == 0
+        assert not (app.session.store.root / "teammates").exists()
+
+
+async def test_tui_export_binding_missing_draft(tmp_path: Path):
+    app = BattleApp(default_offline_config(str(tmp_path)), screenshot_ready=True)
+    async with app.run_test(size=(140, 40)) as pilot:
+        app.action_load_sample()
+        await pilot.pause()
+        app.action_export_bundle()
+        await pilot.pause()
+        found = list(Path(app.session.store.root).glob("exports/*/标书正文.md"))
+        assert found
+        assert "尚无" in found[0].read_text(encoding="utf-8")
+        assert (found[0].parent / "响应对照表.md").is_file()
+        assert (found[0].parent / "transcript.jsonl").is_file()
+        assert (found[0].parent / "session.json").is_file()
+
+
+async def _wait_idle(app: BattleApp, pilot, ticks: int = 80) -> None:
     for _ in range(ticks):
         await pilot.pause(0.05)
         if not app._busy:

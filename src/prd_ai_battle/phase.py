@@ -105,21 +105,25 @@ def cmd_discuss(
     if run:
         if hasattr(session.client, "delay_s"):
             session.client.delay_s = 0.0  # type: ignore[attr-defined]
-        _run_stream(session.discuss(prompt))
+        _run_stream(session.discuss_group(prompt))
     payload = contract_payload(session)
     payload["brief_markdown"] = session.state.brief.as_prompt_block() if session.state.brief else ""
     payload["matrix_markdown"] = session.state.matrix.as_prompt_table()
     payload["timeline"] = _timeline_payload(session)
     payload["transcript"] = session.render_timeline()
     payload["instruction"] = (
-        "Phase=discuss. The `transcript` / `timeline` fields are ONE shared chat: "
-        "yaml primary + advisors[] spoke in parallel and their utterances were folded "
-        "into this session as a single ordered list labeled [agent-id · timestamp]. "
+        "Phase=discuss. This is a GROUP CHAT, not a one-shot fan-out. "
+        "Round 0: yaml primary + advisors[] opened in parallel on the brief. "
+        "Later rounds: every speaker was given the FULL current timeline[] "
+        "(labeled [agent-id · timestamp]) plus the brief, then replied — "
+        "they may agree, disagree, or ask each other. "
+        "The `transcript` / `timeline` fields are ONE ordered chat. "
         "Do NOT spawn OpenCode teammates, subagents, or sidecar panes. "
-        "Do not assume seed names (advisor-sonnet / advisor-grok) — speakers are "
-        "whatever the current yaml lists. Advisors have tools=[]. "
+        "Do not assume seed names — speakers are whatever the current yaml lists. "
+        "Advisors have tools=[]. write_lock stays closed (no filesystem writes). "
         "If one speaker times out or errors, the others continue (do not abort discuss). "
-        "Discuss the brief only — never dump the raw tender or the repo."
+        "Discuss the brief only — never dump the raw tender or the repo. "
+        "Repeat discuss until the user /lock."
     )
     return payload
 

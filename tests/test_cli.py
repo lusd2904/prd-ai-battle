@@ -1,6 +1,8 @@
 from pathlib import Path
 
-from prd_ai_battle.cli import build_parser, cmd_demo, cmd_doctor, cmd_ingest
+import pytest
+
+from prd_ai_battle.cli import build_parser, cmd_demo, cmd_doctor, cmd_export, cmd_ingest, main
 from pdf_fixture import MINI_TENDER, write_text_pdf
 
 
@@ -63,7 +65,7 @@ def test_ingest_markdown_cli(tmp_path: Path, capsys):
     assert '"phase": "discuss"' in out
 
 
-def test_launch_without_opencode_prints_mac_install_hint(monkeypatch, capsys):
+def test_launch_without_opencode_prints_engine_hint(monkeypatch, capsys):
     from prd_ai_battle.launch import launch_opencode
 
     monkeypatch.setattr("prd_ai_battle.launch.find_opencode", lambda: None)
@@ -71,3 +73,75 @@ def test_launch_without_opencode_prints_mac_install_hint(monkeypatch, capsys):
     err = capsys.readouterr().err
     assert "brew install anomalyco/tap/opencode" in err
     assert "prd-ai-battle --offline" in err
+    assert "demo" not in err.lower()
+    assert "看板" in err or "board" in err.lower()
+
+
+def test_default_and_tui_open_the_board_not_opencode(monkeypatch):
+    called: list[str] = []
+
+    def fake_tui(args):
+        called.append("tui")
+        return 0
+
+    def fake_launch(args):
+        called.append("launch")
+        return 0
+
+    monkeypatch.setattr("prd_ai_battle.cli.cmd_tui", fake_tui)
+    monkeypatch.setattr("prd_ai_battle.cli.cmd_launch", fake_launch)
+    with pytest.raises(SystemExit) as exc:
+        main([])
+    assert exc.value.code == 0
+    assert called == ["tui"]
+
+    called.clear()
+    with pytest.raises(SystemExit):
+        main(["tui"])
+    assert called == ["tui"]
+
+    called.clear()
+    with pytest.raises(SystemExit):
+        main(["--offline"])
+    assert called == ["tui"]
+
+    called.clear()
+    with pytest.raises(SystemExit):
+        main(["launch"])
+    assert called == ["launch"]
+
+
+def test_help_offline_is_not_demo():
+    help_text = build_parser().format_help()
+    assert "optional Textual demo" not in help_text
+    assert "离线" in help_text
+    assert "产品看板" in help_text
+    assert "export" in help_text
+
+
+def test_branded_script_does_not_force_launch():
+    text = Path("scripts/prd-ai-battle").read_text(encoding="utf-8")
+    assert "prd_ai_battle launch" not in text
+    assert 'prd_ai_battle "$@"' in text
+
+
+def test_export_cli_missing_and_present_draft(tmp_path: Path, capsys):
+    ws = tmp_path / "ws"
+    args = build_parser().parse_args(
+        ["export", "--offline", "--workspace", str(ws), "-o", str(tmp_path / "out")]
+    )
+    assert args.command == "export"
+    assert cmd_export(args) == 0
+    missing = capsys.readouterr().out
+    assert '"draft_present": false' in missing
+    assert "标书正文" in missing
+    assert "响应对照表" in missing
+
+    demo_args = build_parser().parse_args(["demo", "--workspace", str(ws)])
+    assert cmd_demo(demo_args) == 0
+    args2 = build_parser().parse_args(
+        ["export", "--offline", "--workspace", str(ws), "-o", str(tmp_path / "out2")]
+    )
+    assert cmd_export(args2) == 0
+    present = capsys.readouterr().out
+    assert '"draft_present": true' in present
