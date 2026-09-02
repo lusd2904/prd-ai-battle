@@ -89,6 +89,14 @@ class WorkspaceStore:
                 messages.append(ChatMessage.model_validate_json(line))
         return messages
 
+    def clear_timeline(self, state: SessionState | None = None) -> None:
+        """Drop leftover discuss bubbles. New brief / --requirement starts clean."""
+        self.transcript_path.parent.mkdir(parents=True, exist_ok=True)
+        self.transcript_path.write_text("", encoding="utf-8")
+        if state is not None:
+            state.timeline = []
+            self.save_state(state)
+
     def save_state(self, state: SessionState) -> None:
         state.bump()
         payload = state.model_dump_json(indent=2)

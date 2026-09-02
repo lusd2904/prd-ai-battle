@@ -266,6 +266,10 @@ class BattleApp(App[None]):
         if self.session.config.offline:
             self.session.seed_matrix_offline()
         self.session.enter_discuss()
+        chat = self.query_one("#chat", VerticalScroll)
+        chat.remove_children()
+        self._live.clear()
+        self._replay_timeline()
         self._refresh_left()
         self._user_note(f"已载入 {path.name}。阶段=讨论。模型只看摘要，不看招标原文。")
 

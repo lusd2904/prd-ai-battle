@@ -90,7 +90,32 @@ class Session:
         text = read_requirement_text(path)
         return self.load_requirement_text(text, source=str(path))
 
+    def same_requirement(self, path: Path) -> bool:
+        """True when `path` is the brief already loaded in this workspace."""
+        if self.state.brief is None:
+            return False
+        try:
+            incoming = read_requirement_text(path)
+        except OSError:
+            return False
+        stored = (self.requirement or "").strip()
+        if stored and stored == incoming.strip():
+            return True
+        stored_path = (self.state.requirement_path or "").strip()
+        if not stored_path:
+            return False
+        try:
+            return Path(stored_path).resolve() == Path(path).resolve()
+        except OSError:
+            return stored_path == str(path)
+
+    def reset_timeline(self) -> None:
+        """Forget leftover utterances. Does not loosen write_lock or change review feed."""
+        self.state.timeline = []
+        self.store.clear_timeline(self.state)
+
     def load_requirement_text(self, text: str, *, source: str = "") -> Brief:
+        self.reset_timeline()
         self.requirement = text
         self.store.save_requirement(text, source)
         self.state.brief = extract_brief(text, source_path=source)

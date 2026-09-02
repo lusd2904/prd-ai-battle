@@ -329,6 +329,59 @@ def infer_project_root(workspace: Path) -> Path:
     return ws
 
 
+def env_file_candidates(
+    *,
+    workspace: Path | str | None = None,
+    repo: Path | None = None,
+    cwd: Path | None = None,
+) -> list[Path]:
+    """Existing env files, most-specific first: project, cwd, repo.
+
+    Missing files are skipped. Paths are resolved and de-duplicated.
+    """
+    here = Path(cwd) if cwd is not None else Path.cwd()
+    root = repo or repo_paths(here)
+    seen: set[Path] = set()
+    ordered: list[Path] = []
+
+    def add(path: Path) -> None:
+        try:
+            resolved = path.resolve()
+        except OSError:
+            return
+        if resolved in seen or not resolved.is_file():
+            return
+        seen.add(resolved)
+        ordered.append(resolved)
+
+    if workspace is not None:
+        ws = Path(workspace)
+        add(infer_project_root(ws) / LOCAL_ENV_NAME)
+        add(ws / LOCAL_ENV_NAME)
+    add(here / LOCAL_ENV_NAME)
+    add(root / LOCAL_ENV_NAME)
+    return ordered
+
+
+def autoload_process_env(
+    *,
+    workspace: Path | str | None = None,
+    repo: Path | None = None,
+    cwd: Path | None = None,
+) -> dict[str, str]:
+    """Load gitignored env files into os.environ when a variable is unset.
+
+    Used by discuss / phase / ping / ingest (and launch). Never prints values.
+    Missing files are fine — offline/mock still works.
+    """
+    snapshot: dict[str, str] = {}
+    for path in env_file_candidates(workspace=workspace, repo=repo, cwd=cwd):
+        for name, value in load_env_file(path).items():
+            if os.environ.get(name) == value:
+                snapshot[name] = value
+    return snapshot
+
+
 def load_project_config(
     root: Path,
     *,
@@ -498,10 +551,11 @@ def load_runtime_config(
     repo: Path | None = None,
     offline: bool | None = None,
     ensure_local: bool = True,
+    workspace: Path | str | None = None,
 ) -> AppConfig:
     """Load last-saved local yaml (creating it from seed on first run)."""
     root = repo or repo_paths()
-    load_env_file(local_env_path(root))
+    autoload_process_env(workspace=workspace, repo=root)
     path = find_config(explicit, repo=root)
     if path is None and ensure_local and offline is not True:
         path = ensure_local_config(root)

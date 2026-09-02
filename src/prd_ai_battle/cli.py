@@ -214,6 +214,7 @@ def cmd_doctor(args) -> int:
         explicit=getattr(args, "config", None),
         offline=True if getattr(args, "offline", False) else None,
         ensure_local=not getattr(args, "offline", False),
+        workspace=getattr(args, "workspace", None),
     )
     if args.workspace:
         cfg.workspace = str(args.workspace)
@@ -230,6 +231,7 @@ def cmd_ping(args) -> int:
         explicit=getattr(args, "config", None),
         offline=True if offline else None,
         ensure_local=not offline,
+        workspace=getattr(args, "workspace", None),
     )
     if args.workspace:
         cfg.workspace = str(args.workspace)
@@ -256,6 +258,7 @@ def cmd_tui(args) -> int:
             explicit=args.config,
             offline=None,
             ensure_local=True,
+            workspace=workspace,
         )
         if args.workspace:
             cfg.workspace = workspace
