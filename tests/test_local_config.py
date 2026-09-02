@@ -90,6 +90,49 @@ def test_generated_overlay_from_seed_keeps_backup_as_grok(tmp_path: Path):
     assert overlay["agent"]["advisor-grok"]["model"].endswith("x-ai/grok-4.6")
 
 
+def test_generated_overlay_lists_optional_mac_providers(tmp_path: Path):
+    repo = _seed_repo(tmp_path)
+    cfg = load_config(ensure_local_config(repo))
+    overlay = generate_opencode_config(cfg)
+    for pid in ("prd-codex", "prd-claude-code", "prd-antigravity", "prd-gemini", "prd-xai", "prd-gateway"):
+        assert pid in overlay["provider"]
+        assert pid in overlay["providers"]
+    # Seed team unchanged.
+    assert overlay["agent"]["primary"]["model"].endswith("claude-opus-5")
+    assert overlay["agent"]["advisor-sonnet"]["model"].endswith("claude-sonnet-5")
+    assert overlay["agent"]["advisor-grok"]["model"].endswith("x-ai/grok-4.6")
+    assert overlay["default_agent"] == "primary"
+
+
+def test_config_set_cli_speaker_as_primary_or_advisor(tmp_path: Path):
+    repo = _seed_repo(tmp_path)
+    cfg = load_config(ensure_local_config(repo))
+    apply_user_set(
+        cfg,
+        primary_transport="cli",
+        primary_command="claude",
+        primary_model="claude-opus-5",
+        advisor_id="advisor-codex",
+        add_advisor=True,
+        advisor_transport="cli",
+        advisor_command="codex",
+        advisor_model="gpt-5-codex",
+    )
+    assert cfg.primary.transport == "cli"
+    assert cfg.primary.command == "claude"
+    assert cfg.primary.id == "primary"
+    overlay = generate_opencode_config(cfg)
+    assert overlay["agent"]["primary"]["model"].startswith("prd-claude-code/")
+    assert overlay["agent"]["advisor-codex"]["model"].startswith("prd-codex/")
+    # write_lock binds yaml primary.id, not the CLI binary or model name.
+    assert overlay["default_agent"] == "primary"
+    dest = save_local_config(cfg, repo=repo)
+    text = dest.read_text(encoding="utf-8")
+    assert "transport: cli" in text
+    assert "command: claude" in text
+    assert "command: codex" in text
+
+
 def test_gitignore_covers_local_yaml_and_env():
     text = Path(".gitignore").read_text(encoding="utf-8")
     assert "prd-ai-battle.yaml" in text

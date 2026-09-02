@@ -59,11 +59,21 @@
         },
         "api_key_env": {
           "type": "string",
-          "description": "Environment variable name for the key (PRD_SFP_XIXI_KEY, PRD_SFP_OPENROUTER_KEY, PRD_AI_GATEWAY_KEY). Never commit the value."
+          "description": "Environment variable name for the key (PRD_SFP_XIXI_KEY, PRD_SFP_OPENROUTER_KEY, PRD_AI_GATEWAY_KEY, or optional PRD_CODEX_KEY / PRD_GEMINI_KEY / PRD_XAI_KEY / PRD_CLAUDE_CODE_KEY). Never commit the value."
         },
         "model": {
           "type": "string",
           "description": "Model id sent in the Chat Completions body (whatever the gateway expects)."
+        },
+        "transport": {
+          "type": "string",
+          "enum": ["http", "cli"],
+          "default": "http",
+          "description": "http = OpenAI-compat base_url + env key. cli = Mac-local Codex / Claude Code / Antigravity / Gemini / Grok binary."
+        },
+        "command": {
+          "type": "string",
+          "description": "When transport=cli: preset or argv (`codex`, `claude`, `antigravity`/`agy`, `gemini`, `grok`). Missing binary is reported, not a crash."
         },
         "temperature": {
           "type": "number",

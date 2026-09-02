@@ -16,6 +16,7 @@ from prd_ai_battle.config import (
     XIXI_KEY_ENV,
     OPENROUTER_KEY_ENV,
 )
+from prd_ai_battle.mac_speakers import OPTIONAL_KEY_ENVS
 from prd_ai_battle.llm import ChatClient
 
 BANNED_HOST_FRAGMENTS = (
@@ -148,7 +149,7 @@ def test_env_example_has_key_names_only():
     text = path.read_text(encoding="utf-8")
     assert "prd-ai-battle.env" in text
     assert "copy" in text.lower() or "Copy" in text
-    for name in SEED_KEY_ENVS:
+    for name in (*SEED_KEY_ENVS, *OPTIONAL_KEY_ENVS):
         assert f"{name}=" in text
     for raw in text.splitlines():
         line = raw.strip()

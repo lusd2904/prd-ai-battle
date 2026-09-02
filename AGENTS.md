@@ -20,6 +20,7 @@ Seed snapshot (changeable):
 - `advisor-sonnet` — `claude-sonnet-5` at `https://xixiapi.io/v1` (`PRD_SFP_XIXI_KEY`)
 - `advisor-grok` — `x-ai/grok-4.6` at `https://openrouter.ai/api/v1` (`PRD_SFP_OPENROUTER_KEY`)
 - optional `prd-gateway` backup — `grok-4.5` / `grok-composer-2.5-fast` at `http://127.0.0.1:8000/v1` (`PRD_AI_GATEWAY_KEY`). grok2api, **not Claude**. 429 quota = reachable, credits empty — keep optional.
+- optional Mac speakers (not the seed team; `config set` as primary or advisor): Codex CLI, Claude Code CLI, Antigravity (`agy` / `antigravity`, Gemini CLI fallback), Grok CLI / grok2api, optional `prd-xai`. Each supports `transport: http` or `transport: cli`. write_lock still binds yaml `primary.id`.
 
 ## Hard rules
 

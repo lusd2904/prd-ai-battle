@@ -37,3 +37,24 @@ advisors:
     base_url: https://openrouter.ai/api/v1
     api_key_env: PRD_SFP_OPENROUTER_KEY
     temperature: 0.5
+
+# Optional Mac speakers — NOT on the seed team. Each supports BOTH:
+#   (1) transport: http + base_url + api_key_env  (OpenAI-compat)
+#   (2) transport: cli + command:  (local tool already on the Mac)
+#
+# Point primary or an advisor at one with `prd-ai-battle config set`:
+#   --primary-transport cli --primary-command codex --primary-model gpt-5-codex
+#   --advisor-id advisor-claude --add-advisor --transport cli --command claude
+#   --advisor-id advisor-agy --add-advisor --transport cli --command antigravity
+#   --primary-transport cli --primary-command grok --primary-model grok-4
+#
+# Commands / binaries (missing = doctor/ping "missing", init still works):
+#   codex         Codex CLI (`codex exec`); or `opencode auth` / `codex login`
+#   claude        Claude Code CLI (`claude -p`) — not the xixi HTTP Claude path
+#   antigravity   反重力: prefer `agy`, then `antigravity`, then Gemini CLI `gemini`
+#   gemini        Gemini CLI fallback when Antigravity is not installed
+#   grok          Grok CLI (`grok -p`); local HTTP tool is grok2api at :8000
+#
+# HTTP alternatives (do not hardcode vendor hosts here — set base_url yourself):
+#   Codex / Claude Code / Gemini: your OpenAI-compat root + PRD_*_KEY
+#   Official xAI: base_url https://api.x.ai/v1 + PRD_XAI_KEY (not OpenRouter)

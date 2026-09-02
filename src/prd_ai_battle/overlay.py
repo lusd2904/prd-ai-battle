@@ -22,6 +22,13 @@ from prd_ai_battle.config import (
     generated_opencode_path,
     is_backup_gateway_url,
 )
+from prd_ai_battle.mac_speakers import (
+    XAI_BASE_URL,
+    XAI_PROVIDER_ID,
+    infer_cli_command,
+    optional_overlay_providers,
+    provider_id_for_command,
+)
 
 
 SEED_AGENT_IDS = ("primary", "advisor-sonnet", "advisor-grok", "build")
@@ -37,9 +44,17 @@ def _claude_alias_on_gateway(model_id: str) -> bool:
 
 
 def provider_id_for(model: ModelConfig, gateway_url: str) -> str:
+    if model.is_cli():
+        command = infer_cli_command(model.model, model.command)
+        pid = provider_id_for_command(command)
+        if pid:
+            return pid
+        return "prd-cli-" + _slug(command or model.id)
     url = model.resolved_base_url() or gateway_url
     if is_backup_gateway_url(url, gateway_url):
         return GATEWAY_PROVIDER_ID
+    if (url or "").rstrip("/") == XAI_BASE_URL.rstrip("/"):
+        return XAI_PROVIDER_ID
     host = urlparse(url).netloc or urlparse(url).path or "gateway"
     return "prd-" + _slug(host)
 
@@ -49,10 +64,25 @@ def model_ref(model: ModelConfig, gateway_url: str) -> str:
 
 
 def _provider_entry(model: ModelConfig, gateway_url: str) -> tuple[str, dict]:
-    url = (model.resolved_base_url() or gateway_url).rstrip("/")
     pid = provider_id_for(model, gateway_url)
+    catalog = optional_overlay_providers()
+    if pid in catalog:
+        entry = catalog[pid]
+        entry["models"] = {
+            **entry.get("models", {}),
+            model.model: {"name": f"{model.id} ({model.model})"},
+        }
+        if model.api_key_env and model.api_key_env not in entry["env"]:
+            entry["env"].append(model.api_key_env)
+        if model.is_cli():
+            entry["cli"] = {
+                "command": infer_cli_command(model.model, model.command),
+                "transport": "cli",
+            }
+        return pid, entry
+    url = (model.resolved_base_url() or gateway_url).rstrip("/")
     key_env = model.api_key_env or ""
-    options = {"baseURL": url}
+    options = {"baseURL": url} if url else {}
     env: list[str] = []
     if key_env:
         options["apiKey"] = f"{{env:{key_env}}}"
@@ -68,6 +98,11 @@ def _provider_entry(model: ModelConfig, gateway_url: str) -> tuple[str, dict]:
             model.model: {"name": f"{model.id} ({model.model})"},
         },
     }
+    if model.is_cli():
+        entry["cli"] = {
+            "command": infer_cli_command(model.model, model.command),
+            "transport": "cli",
+        }
     return pid, entry
 
 
@@ -98,6 +133,7 @@ def generate_opencode_config(cfg: AppConfig) -> dict:
     gateway_url = cfg.gateway.resolved_base_url()
     providers: dict[str, dict] = {
         GATEWAY_PROVIDER_ID: _backup_gateway_entry(cfg),
+        **optional_overlay_providers(),
     }
     for model in cfg.all_models():
         pid, entry = _provider_entry(model, gateway_url)

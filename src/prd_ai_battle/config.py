@@ -82,16 +82,31 @@ class ModelConfig(BaseModel):
     api_key: str = ""
     api_key_env: str = ""
     temperature: float = 0.4
+    transport: str = "http"
+    command: str = ""
 
-    @field_validator("base_url", "api_key")
+    @field_validator("base_url", "api_key", "command")
     @classmethod
     def _strip(cls, value: str) -> str:
         return value.strip() if value else ""
 
+    @field_validator("transport")
+    @classmethod
+    def _transport(cls, value: str) -> str:
+        text = (value or "http").strip().lower() or "http"
+        if text not in {"http", "cli"}:
+            raise ValueError("transport must be 'http' or 'cli'")
+        return text
+
+    def is_cli(self) -> bool:
+        return self.transport == "cli"
+
     def resolved_base_url(self, gateway: GatewayConfig | None = None) -> str:
+        if self.is_cli() and not self.base_url:
+            return ""
         raw = self.base_url or (gateway.base_url if gateway is not None else "")
         url = expand_env(raw).rstrip("/")
-        if not url and gateway is not None:
+        if not url and gateway is not None and not self.is_cli():
             url = gateway.resolved_base_url()
         return url
 
@@ -104,11 +119,18 @@ class ModelConfig(BaseModel):
             expanded = expand_env(self.api_key)
             if expanded:
                 return expanded
+        if self.is_cli():
+            return ""
         if gateway is not None:
             return gateway.resolved_key()
         return ""
 
     def chat_completions_url(self, gateway: GatewayConfig | None = None) -> str:
+        if self.is_cli():
+            raise ConfigError(
+                f"Model {self.id!r} uses transport=cli ({self.command or 'no command'}). "
+                "HTTP chat/completions is not used for CLI speakers."
+            )
         root = self.resolved_base_url(gateway)
         if not root:
             raise ConfigError(
@@ -156,6 +178,14 @@ class AppConfig(BaseModel):
                 "to your local multi-key gateway (loopback)."
             )
         for model in self.all_models():
+            if model.is_cli():
+                if model.base_url:
+                    model.base_url = expand_env(model.base_url).rstrip("/")
+                if not model.command:
+                    from prd_ai_battle.mac_speakers import infer_cli_command
+
+                    model.command = infer_cli_command(model.model, model.command)
+                continue
             if not model.base_url:
                 model.base_url = g_url
             else:
@@ -253,9 +283,16 @@ def _model_yaml(model: ModelConfig, gateway: GatewayConfig) -> dict:
     block: dict = {
         "id": model.id,
         "model": model.model,
-        "base_url": url,
         "temperature": model.temperature,
     }
+    if model.is_cli():
+        block["transport"] = "cli"
+        if model.command:
+            block["command"] = model.command
+        if url:
+            block["base_url"] = url
+    else:
+        block["base_url"] = url
     if model.api_key_env:
         block["api_key_env"] = model.api_key_env
         block["api_key"] = f"${{{model.api_key_env}:-}}"
@@ -373,6 +410,22 @@ def load_runtime_config(
     return load_config(path, offline=offline)
 
 
+def _apply_cli_defaults(model: ModelConfig) -> None:
+    """Fill command / model / key-env when the user points a speaker at a Mac CLI."""
+    from prd_ai_battle.mac_speakers import infer_cli_command, preset_for_command
+
+    if not model.is_cli():
+        return
+    model.command = infer_cli_command(model.model, model.command)
+    preset = preset_for_command(model.command)
+    if not preset:
+        return
+    if not model.model or model.model in {"custom-advisor", "mock-primary"}:
+        model.model = preset.default_model or model.model
+    if not model.api_key_env and preset.key_envs:
+        model.api_key_env = preset.key_envs[0]
+
+
 def apply_user_set(
     cfg: AppConfig,
     *,
@@ -381,11 +434,15 @@ def apply_user_set(
     primary_base_url: str | None = None,
     primary_key_env: str | None = None,
     primary_key: str | None = None,
+    primary_transport: str | None = None,
+    primary_command: str | None = None,
     advisor_id: str | None = None,
     advisor_model: str | None = None,
     advisor_base_url: str | None = None,
     advisor_key_env: str | None = None,
     advisor_key: str | None = None,
+    advisor_transport: str | None = None,
+    advisor_command: str | None = None,
     add_advisor: bool = False,
 ) -> dict[str, str]:
     """Mutate cfg from user flags. Returns key-env → secret map to persist in .env."""
@@ -398,11 +455,18 @@ def apply_user_set(
         cfg.primary.base_url = primary_base_url
     if primary_key_env:
         cfg.primary.api_key_env = primary_key_env
+    if primary_transport:
+        cfg.primary.transport = primary_transport
+    if primary_command:
+        cfg.primary.command = primary_command
+        if not primary_transport:
+            cfg.primary.transport = "cli"
     if primary_key:
         env_name = cfg.primary.api_key_env or "PRD_AI_PRIMARY_KEY"
         cfg.primary.api_key_env = env_name
         keys[env_name] = primary_key
         cfg.primary.api_key = f"${{{env_name}:-}}"
+    _apply_cli_defaults(cfg.primary)
     if advisor_id:
         if add_advisor:
             cfg.advisors.append(
@@ -411,6 +475,8 @@ def apply_user_set(
                     model=advisor_model or "custom-advisor",
                     base_url=advisor_base_url or "",
                     api_key_env=advisor_key_env or "",
+                    transport=advisor_transport or "http",
+                    command=advisor_command or "",
                 )
             )
         target = cfg.advisor_by_id(advisor_id)
@@ -420,11 +486,18 @@ def apply_user_set(
             target.base_url = advisor_base_url
         if advisor_key_env:
             target.api_key_env = advisor_key_env
+        if advisor_transport:
+            target.transport = advisor_transport
+        if advisor_command:
+            target.command = advisor_command
+            if not advisor_transport:
+                target.transport = "cli"
         if advisor_key:
             env_name = target.api_key_env or f"PRD_AI_{advisor_id.upper().replace('-', '_')}_KEY"
             target.api_key_env = env_name
             keys[env_name] = advisor_key
             target.api_key = f"${{{env_name}:-}}"
+        _apply_cli_defaults(target)
     cfg.resolve()
     return keys
 
@@ -436,22 +509,46 @@ def is_backup_gateway_url(url: str, gateway_url: str) -> bool:
 
 def doctor_report(cfg: AppConfig) -> dict:
     """Resolved gateway view with the key redacted."""
+    from prd_ai_battle.cli_transport import probe_cli
+    from prd_ai_battle.mac_speakers import SPEAKERS, first_set_env
+
     models = []
     for model in cfg.all_models():
         key = model.resolved_key(cfg.gateway)
-        models.append(
+        row = {
+            "id": model.id,
+            "model": model.model,
+            "base_url": model.resolved_base_url(cfg.gateway),
+            "api_key": "set" if key else "missing",
+            "api_key_env": model.api_key_env or "",
+            "transport": model.transport,
+            "command": model.command,
+        }
+        if model.is_cli():
+            row["cli"] = probe_cli(model.command or model.model).as_public_dict()
+        models.append(row)
+    optional = []
+    for spec in SPEAKERS.values():
+        env_name, env_val = first_set_env(spec.key_envs)
+        cli = probe_cli(spec.default_command)
+        optional.append(
             {
-                "id": model.id,
-                "model": model.model,
-                "base_url": model.resolved_base_url(cfg.gateway),
-                "api_key": "set" if key else "missing",
-                "api_key_env": model.api_key_env or "",
+                "provider_id": spec.provider_id,
+                "name": spec.name,
+                "models": list(spec.models),
+                "command": spec.default_command,
+                "transport": ["http", "cli"],
+                "api_key": "set" if env_val else "missing",
+                "api_key_env": env_name,
+                "cli": cli.as_public_dict(),
+                "notes": spec.notes,
             }
         )
     return {
         "offline": cfg.offline,
         "source": "local-yaml-or-seed",
         "primary_id": cfg.primary.id,
+        "write_lock_binds": "yaml primary.id (never a model name or CLI binary)",
         "gateway": {
             "base_url": cfg.gateway.resolved_base_url(),
             "host": cfg.gateway_host(),
@@ -462,7 +559,9 @@ def doctor_report(cfg: AppConfig) -> dict:
             "models": list(GATEWAY_BACKUP_MODELS),
             "optional": True,
             "speaks": "grok2api (grok-4.5 / grok-composer-2.5-fast, not Claude)",
+            "local_tool": "Mac grok2api at :8000 or Grok CLI (`grok`)",
         },
         "models": models,
-        "hint": "prd-ai-battle ping  # HTTP probe of each provider; keys redacted",
+        "optional_mac_speakers": optional,
+        "hint": "prd-ai-battle ping  # HTTP + CLI probe; keys redacted; missing CLI is not a crash",
     }

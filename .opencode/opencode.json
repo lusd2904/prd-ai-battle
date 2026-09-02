@@ -49,6 +49,67 @@
         "grok-4.5": { "name": "Backup Grok 4.5" },
         "grok-composer-2.5-fast": { "name": "Backup Grok Composer 2.5 Fast" }
       }
+    },
+    "prd-codex": {
+      "npm": "@ai-sdk/openai",
+      "name": "Codex / ChatGPT (optional Mac)",
+      "env": ["PRD_CODEX_KEY", "OPENAI_API_KEY"],
+      "options": {
+        "apiKey": "{env:PRD_CODEX_KEY}"
+      },
+      "models": {
+        "gpt-5-codex": { "name": "GPT-5 Codex (optional)" },
+        "gpt-5.1-codex": { "name": "GPT-5.1 Codex (optional)" }
+      }
+    },
+    "prd-claude-code": {
+      "npm": "@ai-sdk/anthropic",
+      "name": "Claude Code CLI (optional Mac)",
+      "env": ["PRD_CLAUDE_CODE_KEY", "ANTHROPIC_API_KEY"],
+      "options": {
+        "apiKey": "{env:PRD_CLAUDE_CODE_KEY}"
+      },
+      "models": {
+        "claude-opus-5": { "name": "Claude Opus 5 via Claude Code (optional)" },
+        "claude-sonnet-5": { "name": "Claude Sonnet 5 via Claude Code (optional)" }
+      }
+    },
+    "prd-antigravity": {
+      "npm": "@ai-sdk/google",
+      "name": "Antigravity / 反重力 (optional Mac)",
+      "env": ["PRD_ANTIGRAVITY_KEY", "PRD_GEMINI_KEY", "GEMINI_API_KEY"],
+      "options": {
+        "apiKey": "{env:PRD_ANTIGRAVITY_KEY}"
+      },
+      "models": {
+        "gemini-2.5-flash": { "name": "Gemini 2.5 Flash via Antigravity (optional)" },
+        "gemini-2.5-pro": { "name": "Gemini 2.5 Pro via Antigravity (optional)" }
+      }
+    },
+    "prd-gemini": {
+      "npm": "@ai-sdk/google",
+      "name": "Gemini CLI (optional Mac fallback)",
+      "env": ["PRD_GEMINI_KEY", "GEMINI_API_KEY"],
+      "options": {
+        "apiKey": "{env:PRD_GEMINI_KEY}"
+      },
+      "models": {
+        "gemini-2.5-flash": { "name": "Gemini 2.5 Flash (optional)" },
+        "gemini-2.5-pro": { "name": "Gemini 2.5 Pro (optional)" }
+      }
+    },
+    "prd-xai": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "xAI Grok HTTP (optional)",
+      "env": ["PRD_XAI_KEY", "XAI_API_KEY"],
+      "options": {
+        "baseURL": "https://api.x.ai/v1",
+        "apiKey": "{env:PRD_XAI_KEY}"
+      },
+      "models": {
+        "grok-4": { "name": "Grok 4 (optional xAI)" },
+        "grok-4.5": { "name": "Grok 4.5 (optional xAI)" }
+      }
     }
   },
   "providers": {
@@ -88,6 +149,67 @@
       "models": {
         "grok-4.5": { "name": "Backup Grok 4.5" },
         "grok-composer-2.5-fast": { "name": "Backup Grok Composer 2.5 Fast" }
+      }
+    },
+    "prd-codex": {
+      "name": "Codex / ChatGPT (optional Mac)",
+      "env": ["PRD_CODEX_KEY", "OPENAI_API_KEY"],
+      "package": "@opencode-ai/ai/providers/openai",
+      "settings": {
+        "apiKey": "{env:PRD_CODEX_KEY}"
+      },
+      "models": {
+        "gpt-5-codex": { "name": "GPT-5 Codex (optional)" },
+        "gpt-5.1-codex": { "name": "GPT-5.1 Codex (optional)" }
+      }
+    },
+    "prd-claude-code": {
+      "name": "Claude Code CLI (optional Mac)",
+      "env": ["PRD_CLAUDE_CODE_KEY", "ANTHROPIC_API_KEY"],
+      "package": "@opencode-ai/ai/providers/anthropic",
+      "settings": {
+        "apiKey": "{env:PRD_CLAUDE_CODE_KEY}"
+      },
+      "models": {
+        "claude-opus-5": { "name": "Claude Opus 5 via Claude Code (optional)" },
+        "claude-sonnet-5": { "name": "Claude Sonnet 5 via Claude Code (optional)" }
+      }
+    },
+    "prd-antigravity": {
+      "name": "Antigravity / 反重力 (optional Mac)",
+      "env": ["PRD_ANTIGRAVITY_KEY", "PRD_GEMINI_KEY", "GEMINI_API_KEY"],
+      "package": "@opencode-ai/ai/providers/google",
+      "settings": {
+        "apiKey": "{env:PRD_ANTIGRAVITY_KEY}"
+      },
+      "models": {
+        "gemini-2.5-flash": { "name": "Gemini 2.5 Flash via Antigravity (optional)" },
+        "gemini-2.5-pro": { "name": "Gemini 2.5 Pro via Antigravity (optional)" }
+      }
+    },
+    "prd-gemini": {
+      "name": "Gemini CLI (optional Mac fallback)",
+      "env": ["PRD_GEMINI_KEY", "GEMINI_API_KEY"],
+      "package": "@opencode-ai/ai/providers/google",
+      "settings": {
+        "apiKey": "{env:PRD_GEMINI_KEY}"
+      },
+      "models": {
+        "gemini-2.5-flash": { "name": "Gemini 2.5 Flash (optional)" },
+        "gemini-2.5-pro": { "name": "Gemini 2.5 Pro (optional)" }
+      }
+    },
+    "prd-xai": {
+      "name": "xAI Grok HTTP (optional)",
+      "env": ["PRD_XAI_KEY", "XAI_API_KEY"],
+      "package": "@opencode-ai/ai/providers/xai",
+      "settings": {
+        "baseURL": "https://api.x.ai/v1",
+        "apiKey": "{env:PRD_XAI_KEY}"
+      },
+      "models": {
+        "grok-4": { "name": "Grok 4 (optional xAI)" },
+        "grok-4.5": { "name": "Grok 4.5 (optional xAI)" }
       }
     }
   },
