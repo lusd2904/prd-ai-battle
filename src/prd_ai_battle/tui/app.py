@@ -39,8 +39,14 @@ class StreamEvent(Message):
         self.event = event
 
 
-class Bubble(Static):
+class Bubble(Vertical):
     """One utterance on the shared discuss stream. Color follows yaml speaker id."""
+
+    DEFAULT_CSS = """
+    Bubble {
+        height: auto;
+    }
+    """
 
     def __init__(
         self,
@@ -62,13 +68,22 @@ class Bubble(Static):
         self.accent = speaker_color(
             model_id, primary_id=primary_id, advisor_ids=self.advisor_ids
         )
-        super().__init__(id=None)
+        super().__init__()
         self.add_class("bubble", self.speaker_class)
+
+    def _header_text(self) -> str:
+        clock = self.ts[11:19] if len(self.ts) >= 19 else self.ts
+        return f"{self.display_name} · {clock}"
+
+    def compose(self) -> ComposeResult:
+        yield Static(self._header_text(), classes="bubble-header", markup=False)
+        yield Static(self.body, classes="bubble-body", markup=False)
 
     def append(self, text: str) -> None:
         self.body += text
-        clock = self.ts[11:19] if len(self.ts) >= 19 else self.ts
-        self.update(f"[b {self.accent}]{self.display_name} · {clock}[/b]\n{self.body}")
+        if self.is_mounted:
+            self.query_one(".bubble-header", Static).update(self._header_text())
+            self.query_one(".bubble-body", Static).update(self.body)
 
 
 class BattleApp(App[None]):

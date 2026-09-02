@@ -72,6 +72,12 @@ TabbedContent {
 .bubble-header {
     text-style: bold;
     color: #8b949e;
+    height: 1;
+}
+
+.bubble-body {
+    height: auto;
+    color: #e6edf3;
 }
 
 .speaker-user {

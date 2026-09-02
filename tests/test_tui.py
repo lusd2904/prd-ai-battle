@@ -88,9 +88,10 @@ async def test_tui_load_sample_and_status(tmp_path: Path):
         assert app.session.machine.phase is Phase.DISCUSS
         assert app.query_one("#matrix").row_count > 0
         assert app.query_one("#chat")
-        assert TAB_REQUIREMENT in {p.name for p in app.query("TabPane")}
-        assert TAB_BRIEF in {p.name for p in app.query("TabPane")}
-        assert TAB_MATRIX in {p.name for p in app.query("TabPane")}
+        tab_titles = {str(getattr(p, "_title", "") or "") for p in app.query("TabPane")}
+        assert TAB_REQUIREMENT in tab_titles
+        assert TAB_BRIEF in tab_titles
+        assert TAB_MATRIX in tab_titles
         assert "讨论" in app.status_text
         assert "对照表" in app.status_text
         assert "未锁定" in app.status_text
