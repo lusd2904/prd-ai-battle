@@ -1,6 +1,8 @@
 """OpenAI-compatible Chat Completions client with true parallel SSE streams.
 
 Also ships an offline mock so the board is usable with no network.
+HTTP: timeouts + retry/backoff on 429/5xx. One speaker failure is isolated
+by stream_parallel. Errors are redacted (no Authorization / env values).
 """
 
 from __future__ import annotations
@@ -14,7 +16,9 @@ from dataclasses import dataclass
 import httpx
 
 from prd_ai_battle.config import ModelConfig
+from prd_ai_battle.http_retry import DEFAULT_ATTEMPTS, backoff_seconds, should_retry_status
 from prd_ai_battle.models import ChatMessage, Phase
+from prd_ai_battle.redact import redact
 
 # Opening-round marker: unique per yaml speaker id so a later crossing
 # reply can prove it read someone else's bubble. Not a seed model name.
@@ -30,6 +34,10 @@ class StreamDelta:
 
 class LLMError(RuntimeError):
     pass
+
+
+class _RetryableHTTP(LLMError):
+    """429 / 5xx before any tokens — ChatClient retries with backoff."""
 
 
 class ChatClient:
@@ -49,6 +57,10 @@ class ChatClient:
 
         Advisors must be called with tools=[] — that empty list is sent on the wire.
         """
+        if model.is_cli():
+            async for token in _stream_cli(model, messages, timeout=self.timeout):
+                yield token
+            return
         key = model.resolved_key()
         if not key:
             hint = model.api_key_env or "gateway.api_key / PRD_AI_GATEWAY_KEY"
@@ -66,11 +78,45 @@ class ChatClient:
             "Content-Type": "application/json",
         }
         url = model.chat_completions_url()
+        last_error = ""
+        for attempt in range(DEFAULT_ATTEMPTS):
+            try:
+                async for token in self._stream_once(model.id, url, headers, payload, extra_secrets=[key]):
+                    yield token
+                return
+            except _RetryableHTTP as exc:
+                last_error = str(exc)
+                if attempt >= DEFAULT_ATTEMPTS - 1:
+                    raise LLMError(redact(last_error, [key])) from exc
+                await asyncio.sleep(backoff_seconds(attempt))
+            except httpx.TimeoutException as exc:
+                last_error = f"{model.id} timed out"
+                if attempt >= DEFAULT_ATTEMPTS - 1:
+                    raise LLMError(redact(last_error, [key])) from exc
+                await asyncio.sleep(backoff_seconds(attempt))
+        raise LLMError(redact(last_error or f"{model.id} HTTP failed", [key]))
+
+    async def _stream_once(
+        self,
+        model_id: str,
+        url: str,
+        headers: dict[str, str],
+        payload: dict,
+        *,
+        extra_secrets: list[str],
+    ) -> AsyncIterator[str]:
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             async with client.stream("POST", url, headers=headers, json=payload) as resp:
+                if should_retry_status(resp.status_code):
+                    body = (await resp.aread()).decode("utf-8", errors="replace")
+                    raise _RetryableHTTP(
+                        redact(f"{model_id} HTTP {resp.status_code}: {body[:400]}", extra_secrets)
+                    )
                 if resp.status_code >= 400:
                     body = (await resp.aread()).decode("utf-8", errors="replace")
-                    raise LLMError(f"{model.id} HTTP {resp.status_code}: {body[:400]}")
+                    raise LLMError(
+                        redact(f"{model_id} HTTP {resp.status_code}: {body[:400]}", extra_secrets)
+                    )
                 async for line in resp.aiter_lines():
                     if not line:
                         continue
@@ -92,6 +138,32 @@ class ChatClient:
                     content = delta.get("content")
                     if content:
                         yield content
+
+
+async def _stream_cli(
+    model: ModelConfig,
+    messages: list[dict[str, str]],
+    *,
+    timeout: float = 120.0,
+) -> AsyncIterator[str]:
+    """Yield CLI tokens as they arrive so discuss does not wait for process exit."""
+    from prd_ai_battle.cli_transport import command_for_model, messages_to_prompt, stream_cli_prompt
+
+    command = command_for_model(model)
+    if not command:
+        raise LLMError(f"Model {model.id} has transport=cli but no command")
+    try:
+        async for token in stream_cli_prompt(
+            command, messages_to_prompt(messages), timeout=timeout
+        ):
+            if token:
+                yield token
+    except FileNotFoundError as exc:
+        raise LLMError(f"Missing CLI for {model.id}: {exc}") from exc
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001 — surface as stream error, don't crash siblings
+        raise LLMError(redact(f"CLI {command!r} failed for {model.id}: {exc}")) from exc
 
 
 class MockChatClient(ChatClient):
@@ -264,7 +336,7 @@ async def stream_parallel(
             await queue.put(StreamDelta(model.id, "", True))
             raise
         except Exception as exc:  # noqa: BLE001 — isolate; do not abort siblings
-            await queue.put(StreamDelta(model.id, f"\n[error] {exc}", True))
+            await queue.put(StreamDelta(model.id, f"\n[error] {redact(str(exc))}", True))
 
     tasks = [asyncio.create_task(run(m)) for m in models]
     finished = 0

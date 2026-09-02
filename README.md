@@ -43,7 +43,40 @@ Edit `prd-ai-battle.yaml` directly if you prefer, then relaunch. Launch always:
 2. Reads `prd-ai-battle.yaml` (creates it from seed if missing).
 3. Generates `prd-ai-battle.opencode.json` and points OpenCode at it.
 
-`write_lock` allows writes only for the **current yaml `primary.id`**, not for the model name `claude-opus-5` and not for a leftover agent named `primary` if you renamed the lead.
+`write_lock` allows writes only for the **current yaml `primary.id`**, not for the model name `claude-opus-5`, not for a leftover agent named `primary` if you renamed the lead, and not for a CLI binary name (`claude`, `codex`, …).
+
+## Optional Mac speakers (HTTP and local CLI)
+
+Seed team stays xixi Opus / Sonnet + OpenRouter Grok until you `config set` a speaker. Each optional speaker supports **both** transports:
+
+| Transport | yaml | What runs |
+| --- | --- | --- |
+| `http` | `base_url` + `api_key_env` | OpenAI-compatible Chat Completions (timeouts, 429/5xx retry, redacted errors) |
+| `cli` | `transport: cli` + `command:` | Mac-local binary on `PATH`. Tokens stream into the shared discuss timeline as the CLI writes stdout (JSONL when the tool supports it). Timeout/cancel kills the process group. |
+
+| Speaker | `command` / binaries | HTTP key env (names only) | Notes |
+| --- | --- | --- | --- |
+| Codex | `codex` | `PRD_CODEX_KEY` or `OPENAI_API_KEY` | Or `opencode auth` / `codex login` (ChatGPT subscription) |
+| Claude Code | `claude` | `PRD_CLAUDE_CODE_KEY` or `ANTHROPIC_API_KEY` | Local Claude CLI — **not** the seed xixi HTTP Claude path |
+| Antigravity (反重力) | `agy`, then `antigravity` | `PRD_ANTIGRAVITY_KEY` | Gemini CLI `gemini` is the fallback if Antigravity is missing |
+| Gemini CLI | `gemini` | `PRD_GEMINI_KEY` or `GEMINI_API_KEY` | Use when `agy` / `antigravity` are not installed |
+| Grok local | `grok` | `PRD_AI_GATEWAY_KEY` (grok2api) or `PRD_XAI_KEY` | Local tool: grok2api at `:8000`. Optional official xAI HTTP is `prd-xai`, not OpenRouter |
+
+Missing binary or empty optional env: `prd-ai-battle doctor` / `ping` report `missing` / `skipped_optional`. `init` does not crash. Do not install CLIs on cloud hosts.
+
+```bash
+# Point primary at Claude Code CLI (write_lock still follows yaml primary.id)
+prd-ai-battle config set --primary-transport cli --primary-command claude --primary-model claude-opus-5
+
+# Same speaker over HTTP (your OpenAI-compat root — not hardcoded)
+prd-ai-battle config set --primary-transport http --primary-model claude-opus-5 \
+  --primary-base-url https://xixiapi.io/v1 --primary-key-env PRD_SFP_XIXI_KEY
+
+# Add Antigravity / Gemini / Codex / Grok as an advisor
+prd-ai-battle config set --add-advisor --advisor-id advisor-agy --transport cli --command antigravity
+prd-ai-battle config set --add-advisor --advisor-id advisor-codex --transport cli --command codex
+prd-ai-battle config set --advisor-id advisor-grok --transport cli --command grok --model grok-4
+```
 
 ## Seed team (until you change it)
 

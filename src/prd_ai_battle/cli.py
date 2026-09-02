@@ -140,12 +140,26 @@ def build_parser() -> argparse.ArgumentParser:
     setter.add_argument("--primary-base-url")
     setter.add_argument("--primary-key-env")
     setter.add_argument("--primary-key", help="Stored in gitignored prd-ai-battle.env, not yaml")
+    setter.add_argument(
+        "--primary-transport",
+        choices=["http", "cli"],
+        help="http (OpenAI-compat base_url) or cli (Mac Codex/Claude/Antigravity/Gemini/Grok)",
+    )
+    setter.add_argument(
+        "--primary-command",
+        help="CLI binary/preset: codex, claude, antigravity|agy, gemini, grok",
+    )
     setter.add_argument("--advisor-id", help="Existing advisor id, or with --add-advisor a new one")
     setter.add_argument("--add-advisor", action="store_true")
     setter.add_argument("--model", help="Advisor model id (with --advisor-id)")
     setter.add_argument("--base-url", help="Advisor base_url (with --advisor-id)")
     setter.add_argument("--key-env", help="Advisor api_key_env (with --advisor-id)")
     setter.add_argument("--key", help="Advisor key → gitignored env file (with --advisor-id)")
+    setter.add_argument("--transport", choices=["http", "cli"], help="Advisor transport (with --advisor-id)")
+    setter.add_argument(
+        "--command",
+        help="Advisor CLI command/preset (with --advisor-id): codex, claude, antigravity, gemini, grok",
+    )
     return parser
 
 
@@ -312,11 +326,15 @@ def cmd_config(args) -> int:
             primary_base_url=args.primary_base_url,
             primary_key_env=args.primary_key_env,
             primary_key=args.primary_key,
+            primary_transport=args.primary_transport,
+            primary_command=args.primary_command,
             advisor_id=args.advisor_id,
             advisor_model=args.model,
             advisor_base_url=args.base_url,
             advisor_key_env=args.key_env,
             advisor_key=args.key,
+            advisor_transport=args.transport,
+            advisor_command=args.command,
             add_advisor=args.add_advisor,
         )
         dest = save_local_config(cfg, keys=keys or None)

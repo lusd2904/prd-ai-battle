@@ -58,6 +58,13 @@ def test_providers_use_env_interpolation_not_secrets():
     assert "{env:PRD_SFP_XIXI_KEY}" in raw
     assert "{env:PRD_SFP_OPENROUTER_KEY}" in raw
     assert "PRD_AI_GATEWAY_KEY" in raw
+    assert "prd-codex" in raw
+    assert "prd-claude-code" in raw
+    assert "prd-antigravity" in raw
+    assert "prd-gemini" in raw
+    assert "prd-xai" in raw
+    assert "{env:PRD_CODEX_KEY}" in raw
+    assert "{env:PRD_XAI_KEY}" in raw
     for pattern in SECRET_PATTERNS:
         assert not pattern.search(raw), f"secret-like value in opencode.json: {pattern.pattern}"
 
@@ -134,3 +141,8 @@ def test_readme_leads_with_product_board_not_demo():
     assert "grok-4.5" in readme
     assert "do not ship a plugin" in readme.lower() or "not an npm" in readme.lower()
     assert "brew install anomalyco/tap/opencode" in readme
+    assert "transport: cli" in readme or "--primary-transport cli" in readme
+    assert "claude" in readme.lower()
+    assert "antigravity" in readme.lower() or "反重力" in readme
+    assert "codex" in readme.lower()
+    assert "write_lock" in readme

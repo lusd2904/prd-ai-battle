@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from prd_ai_battle.models import (
@@ -56,8 +57,12 @@ class WorkspaceStore:
         return ComplianceMatrix.model_validate_json(self.matrix_path.read_text(encoding="utf-8"))
 
     def append_message(self, message: ChatMessage, state: SessionState | None = None) -> None:
+        """Append one jsonl line and fsync so a crash mid-discuss keeps the timeline."""
+        self.transcript_path.parent.mkdir(parents=True, exist_ok=True)
         with self.transcript_path.open("a", encoding="utf-8") as fh:
             fh.write(message.model_dump_json() + "\n")
+            fh.flush()
+            os.fsync(fh.fileno())
         if state is not None:
             state.timeline.append(message)
             self.save_state(state)
@@ -86,7 +91,12 @@ class WorkspaceStore:
 
     def save_state(self, state: SessionState) -> None:
         state.bump()
-        self.meta_path.write_text(state.model_dump_json(indent=2), encoding="utf-8")
+        payload = state.model_dump_json(indent=2)
+        self.meta_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.meta_path.open("w", encoding="utf-8") as fh:
+            fh.write(payload)
+            fh.flush()
+            os.fsync(fh.fileno())
 
     save_meta = save_state
 
