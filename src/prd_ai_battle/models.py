@@ -263,17 +263,21 @@ class SessionState(BaseModel):
 
     def allows_write(self, actor_id: str) -> bool:
         """Filesystem artifact writes: execute|revise AND actor is primary."""
+        actor = (actor_id or "").strip()
+        if not actor or actor == "unknown":
+            return False
         return bool(
             self.write_lock
             and self.phase in WRITE_PHASES
-            and actor_id == self.primary
+            and actor == self.primary
         )
 
     def tools_for(self, actor_id: str) -> list[str]:
         """Advisors always get tools: []. Primary gets write_file only in write phases."""
-        if actor_id != self.primary:
+        actor = (actor_id or "").strip()
+        if not actor or actor == "unknown" or actor != self.primary:
             return []
-        if self.allows_write(actor_id):
+        if self.allows_write(actor):
             return ["write_file"]
         return []
 

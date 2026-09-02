@@ -10,7 +10,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from prd_ai_battle.models import Phase, SessionState, WRITE_PHASES
+from prd_ai_battle.models import Phase, SessionState
+from prd_ai_battle.write_lock import WriteDenied, WriteLock
 
 WRITE_TOOLS = frozenset(
     {
@@ -52,9 +53,14 @@ def is_primary_actor(actor_id: str, state: SessionState) -> bool:
     return bool(actor) and actor == state.primary
 
 
+def is_unknown_actor(actor_id: str) -> bool:
+    """Session not remembered (or empty) — never treat as the primary writer."""
+    return not (actor_id or "").strip() or (actor_id or "").strip() == "unknown"
+
+
 def is_advisor_actor(actor_id: str, state: SessionState) -> bool:
     actor = (actor_id or "").strip()
-    if not actor or actor == "unknown":
+    if is_unknown_actor(actor):
         # Fail closed for writes: unknown caller is not the current primary.
         return True
     return actor != state.primary
@@ -121,6 +127,11 @@ def write_check(
     if advisor:
         payload["tools_for_actor"] = []
 
+    if is_unknown_actor(actor_id) and (is_write_tool(tool_name) or is_shell_tool(tool_name)):
+        payload["ok"] = False
+        payload["reason"] = "write_lock denied for unknown actor"
+        return payload
+
     if advisor and (is_write_tool(tool_name) or is_shell_tool(tool_name)):
         payload["ok"] = False
         payload["reason"] = (
@@ -147,31 +158,12 @@ def write_check(
             return payload
 
     if is_write_tool(tool_name):
-        if advisor:
+        # Same fail-closed decision as WriteLock.assert_can_write (source of truth).
+        try:
+            WriteLock(state).assert_can_write(actor_id)
+        except WriteDenied as exc:
             payload["ok"] = False
-            payload["reason"] = f"{actor_id!r} is not the primary ({state.primary!r})"
-            return payload
-        if not is_primary_actor(actor_id, state):
-            payload["ok"] = False
-            payload["reason"] = (
-                f"{actor_id!r} is not the current primary ({state.primary!r}); "
-                "only the configured primary id may write, and only in execute/revise"
-            )
-            return payload
-        if not state.write_lock:
-            payload["ok"] = False
-            payload["reason"] = "write_lock is disabled in an unexpected way"
-            return payload
-        if state.phase not in WRITE_PHASES:
-            payload["ok"] = False
-            payload["reason"] = (
-                f"Filesystem writes are forbidden in phase {state.phase.value} "
-                f"(only execute/revise + primary)"
-            )
-            return payload
-        if not state.allows_write(state.primary):
-            payload["ok"] = False
-            payload["reason"] = f"write_lock denied for primary in {state.phase.value}"
+            payload["reason"] = str(exc)
             return payload
 
     return payload

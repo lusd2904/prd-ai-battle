@@ -52,7 +52,10 @@ def test_write_phases_are_execute_and_revise_only():
         state.phase = phase
         assert state.allows_write("primary") is (phase in WRITE_PHASES)
         assert state.allows_write("a") is False
+        assert state.allows_write("unknown") is False
+        assert state.allows_write("") is False
         assert state.tools_for("a") == []
+        assert state.tools_for("unknown") == []
 
 
 def test_review_packet_only_three_inputs():

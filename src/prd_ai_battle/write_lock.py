@@ -18,7 +18,10 @@ class WriteLock:
 
     def assert_can_write(self, actor_id: str, machine: StateMachine | None = None) -> None:
         state = machine.state if machine is not None else self.state
-        if actor_id != state.primary:
+        actor = (actor_id or "").strip()
+        if not actor or actor == "unknown":
+            raise WriteDenied("write_lock denied for unknown actor")
+        if actor != state.primary:
             raise WriteDenied(
                 f"{actor_id!r} is not the primary ({state.primary!r}); advisors always get tools: []"
             )
@@ -29,8 +32,8 @@ class WriteLock:
                 f"Filesystem writes are forbidden in phase {state.phase.value} "
                 f"(only {'/'.join(p.value for p in WRITE_PHASES)} + primary)"
             )
-        if not state.allows_write(actor_id):
-            raise WriteDenied(f"write_lock denied for {actor_id!r} in {state.phase.value}")
+        if not state.allows_write(actor):
+            raise WriteDenied(f"write_lock denied for {actor!r} in {state.phase.value}")
 
     def tools_for(self, actor_id: str, machine: StateMachine | None = None) -> list[str]:
         state = machine.state if machine is not None else self.state

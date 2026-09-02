@@ -87,9 +87,18 @@ def test_seed_prd_gateway_models_are_grok_not_claude():
 def test_write_lock_plugin_is_in_repo_hook_not_npm_package():
     plugin = (ROOT / ".opencode" / "plugins" / "write-lock.js").read_text(encoding="utf-8")
     assert "tool.execute.before" in plugin
+    assert "permission.ask" in plugin
     assert "write-check" in plugin
+    assert "runWriteCheck" in plugin
+    assert "evaluateWriteCheck" in plugin
     assert "NOT an npm plugin" in plugin or "not an npm plugin" in plugin.lower()
     assert "WriteLockHook" in plugin
+    # Both OpenCode gates must call write-check — not actor !== primary alone.
+    ask = plugin.split('"permission.ask"')[1].split('"tool.execute.before"')[0]
+    before = plugin.split('"tool.execute.before"')[1].split('"tool.execute.after"')[0]
+    assert "decide(" in ask and "decide(" in before
+    assert "phase\", \"status\"" not in ask
+    assert "actor !== primary" not in ask
 
 
 def test_advisor_markdown_denies_edit_and_does_not_pin_a_model():
