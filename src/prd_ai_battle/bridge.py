@@ -99,12 +99,47 @@ def is_review_allowlisted(path: str | None) -> bool:
     return any(lowered.endswith(suffix) for suffix in REVIEW_ALLOWLIST_SUFFIXES)
 
 
+def _normalize_path(path: Path) -> Path:
+    parts: list[str] = []
+    for part in path.parts:
+        if part == "..":
+            if parts and parts[-1] not in {"/", ""}:
+                parts.pop()
+        elif part not in {".", ""}:
+            parts.append(part)
+    if not parts:
+        return Path(path.anchor) if path.is_absolute() else Path()
+    if path.is_absolute() and parts[0] not in {path.anchor, "/"}:
+        return Path(path.anchor) / Path(*parts)
+    return Path(*parts)
+
+
+def write_escapes_workspace(path: str | None, workspace: Path | str | None) -> bool:
+    """True when `path` resolves outside `workspace` (another project's drafts)."""
+    if not (path or "").strip() or workspace is None:
+        return False
+    ws = Path(workspace)
+    try:
+        ws = ws.resolve()
+    except OSError:
+        pass
+    raw = Path(path)
+    candidate = raw if raw.is_absolute() else ws / raw
+    resolved = _normalize_path(candidate)
+    ws_n = _normalize_path(ws)
+    try:
+        return not resolved.is_relative_to(ws_n)
+    except (ValueError, TypeError):
+        return True
+
+
 def write_check(
     state: SessionState,
     *,
     actor_id: str,
     tool: str,
     path: str | None = None,
+    workspace: Path | str | None = None,
 ) -> dict[str, Any]:
     """Return a JSON-serializable decision. `ok` is True only when allowed."""
 
@@ -164,6 +199,13 @@ def write_check(
         except WriteDenied as exc:
             payload["ok"] = False
             payload["reason"] = str(exc)
+            return payload
+        if write_escapes_workspace(path, workspace):
+            payload["ok"] = False
+            payload["reason"] = (
+                "write_lock: path is outside this workspace; "
+                "drafts stay under the chosen project's drafts/"
+            )
             return payload
 
     return payload

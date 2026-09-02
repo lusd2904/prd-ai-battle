@@ -2,6 +2,8 @@
 
 macOS window for **prd-ai-battle**. The window is a **PTY shell** around the product Textual TUI — not a second write stack.
 
+On launch the app shows a native **选择工作区** folder picker (`NSOpenPanel` / `rfd`) **before** the PTY TUI starts. The chosen folder **is** the project workspace (`prd-ai-battle --workspace`). Default directory is an existing `round-matrix` session if present, else last-used `catalog.json`, else the repo root. Cancel exits cleanly. This is not the TUI **新建项目** flow.
+
 On a Mac, from the repo root or this crate:
 
 ```bash
@@ -13,6 +15,7 @@ Optional flags:
 
 ```bash
 cargo run -- --offline          # pass through to the TUI
+cargo run -- --workspace PATH   # skip the picker; open this workspace
 cargo run -- --matrix           # open/print http://127.0.0.1:1780
 cargo run -- --serve-matrix     # host `prd-ai-battle web` + open the URL
 cargo run -- --docker           # force `docker compose run --rm prd-ai-battle`

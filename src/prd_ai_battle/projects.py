@@ -205,12 +205,16 @@ class ProjectHub:
         seed_config: AppConfig,
         offline: bool | None = None,
         search_root: Path | None = None,
+        explicit_workspace: bool = False,
     ) -> ProjectHub:
         """Load a catalog or register the current workspace as the first project.
 
         Default/open prefers a last-locked workspace (e.g. round-matrix) over a
         leftover bundled tender fixture or an empty D01 stub. Fresh empty
         workspaces stay as a clean project.
+
+        `explicit_workspace` (Mac folder picker / `--workspace`) binds the seed
+        workspace as the active project and does not auto-create 新建项目.
         """
         off = seed_config.offline if offline is None else offline
         hub = cls(home, offline=off)
@@ -219,9 +223,16 @@ class ProjectHub:
             hub._adopt_discovered(Path(search_root))
         if not hub.projects:
             ws = Path(seed_config.workspace).resolve()
+            label = DEFAULT_PROJECT_NAME
+            if explicit_workspace:
+                label = ws.name
+                if label in {"", ".", ".prd-ai-battle"}:
+                    label = ws.parent.name or DEFAULT_PROJECT_NAME
+                if label in {"", ".", ".prd-ai-battle"}:
+                    label = DEFAULT_PROJECT_NAME
             rec = ProjectRecord(
                 id=unique_project_id(set()),
-                name=DEFAULT_PROJECT_NAME,
+                name=label,
                 root=str(infer_project_root(ws).resolve()),
                 workspace=str(ws),
             )
@@ -235,7 +246,10 @@ class ProjectHub:
             hub._mounted[rec.id] = Session(cfg, root=ws)
             hub.active_id = rec.id
             hub._save()
-        hub._prefer_startup(seed_config)
+        if explicit_workspace:
+            hub._bind_explicit(seed_config)
+        else:
+            hub._prefer_startup(seed_config)
         if hub.active_id not in hub.projects and hub.order:
             hub.active_id = hub.order[0]
             hub._save()
@@ -379,6 +393,36 @@ class ProjectHub:
             added = True
         if added:
             self._save()
+
+    def _bind_explicit(self, seed_config: AppConfig) -> None:
+        """Activate the chosen workspace. Do not spawn 新建项目 as the first screen."""
+        ws = Path(seed_config.workspace).resolve()
+        peeked = peek_workspace_dir(ws)
+        targets = {ws}
+        if peeked is not None:
+            targets.add(peeked.resolve())
+        for rec in self.iter_projects():
+            existing = Path(rec.workspace).resolve()
+            nested = peek_workspace_dir(existing)
+            if existing in targets or (nested is not None and nested.resolve() in targets):
+                self.active_id = rec.id
+                self._save()
+                return
+        name = ws.name
+        if name in {"", ".", ".prd-ai-battle"}:
+            name = ws.parent.name or DEFAULT_PROJECT_NAME
+        if name in {"", ".", ".prd-ai-battle"}:
+            name = DEFAULT_PROJECT_NAME
+        rec = ProjectRecord(
+            id=unique_project_id(set(self.projects)),
+            name=name,
+            root=str(infer_project_root(ws).resolve()),
+            workspace=str(ws),
+        )
+        self.projects[rec.id] = rec
+        self.order.append(rec.id)
+        self.active_id = rec.id
+        self._save()
 
     def _prefer_startup(self, seed_config: AppConfig) -> None:
         """Land on last locked workspace, else a clean project — not leftover/D01."""
