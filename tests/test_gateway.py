@@ -64,8 +64,8 @@ def test_example_uses_product_endpoints_and_env_keys(monkeypatch):
     assert cfg.advisors[0].id == "advisor-sonnet"
     assert cfg.advisors[0].model == "claude-sonnet-5"
     assert cfg.advisors[0].resolved_base_url(cfg.gateway) == "https://xixiapi.io/v1"
-    assert cfg.advisors[1].id == "advisor-grok"
-    assert cfg.advisors[1].model == "x-ai/grok-4.6"
+    assert cfg.advisors[1].id == "advisor-glm"
+    assert cfg.advisors[1].model == "z-ai/glm-5.2:free"
     assert cfg.advisors[1].resolved_base_url(cfg.gateway) == "https://openrouter.ai/api/v1"
     assert cfg.advisors[1].api_key_env == OPENROUTER_KEY_ENV
     assert cfg.primary.resolved_key(cfg.gateway) == ""

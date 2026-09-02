@@ -34,10 +34,10 @@ def test_seed_ping_targets_cover_xixi_openrouter_and_backup_grok(monkeypatch):
     models = {t.id: t.model for t in targets}
     urls = {t.base_url for t in targets}
     assert "primary" in ids
-    assert "advisor-grok" in ids
+    assert "advisor-glm" in ids
     assert GATEWAY_PROVIDER_ID in ids
     assert models["primary"] == "claude-opus-5"
-    assert models["advisor-grok"] == "x-ai/grok-4.6"
+    assert models["advisor-glm"] == "z-ai/glm-5.2:free"
     assert models[GATEWAY_PROVIDER_ID] == GATEWAY_BACKUP_PING_MODEL == "grok-4.5"
     assert "https://xixiapi.io/v1" in urls
     assert "https://openrouter.ai/api/v1" in urls
@@ -73,7 +73,7 @@ def test_ping_mocked_http_statuses_and_redacts_keys(monkeypatch):
     by_id = {t["id"]: t for t in report["targets"]}
     assert by_id["primary"]["http_status"] == 200
     assert by_id["primary"]["outcome"] == "ok"
-    assert by_id["advisor-grok"]["http_status"] == 200
+    assert by_id["advisor-glm"]["http_status"] == 200
     assert by_id[GATEWAY_PROVIDER_ID]["http_status"] == 429
     assert by_id[GATEWAY_PROVIDER_ID]["outcome"] == "reachable_quota_empty"
     assert by_id[GATEWAY_PROVIDER_ID]["model"] == "grok-4.5"

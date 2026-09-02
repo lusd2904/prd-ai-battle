@@ -14,7 +14,7 @@ offline: false
 # Optional grok2api backup (may 429 on credits — reachable, not healthy).
 # Speaks grok-4.5 / grok-composer-2.5-fast, NOT Claude. Copy key names from
 # prd-ai-battle.env.example → gitignored prd-ai-battle.env.
-# Primary/advisors override base_url below (xixi / OpenRouter).
+# Primary/advisors override base_url below (xixi / OpenRouter / OpenCode Zen).
 #
 # Mac host default is 127.0.0.1. From a Linux Docker container the loopback
 # is the container itself — set PRD_AI_GATEWAY_URL to
@@ -24,6 +24,7 @@ gateway:
   base_url: ${PRD_AI_GATEWAY_URL:-http://127.0.0.1:8000/v1}
   api_key: ${PRD_AI_GATEWAY_KEY:-}
 
+# write_lock binds yaml primary.id (here: primary), never a vendor name.
 primary:
   id: primary
   model: claude-opus-5
@@ -31,27 +32,52 @@ primary:
   api_key_env: PRD_SFP_XIXI_KEY
   temperature: 0.3
 
+# Default advisors: working xixi sonnet + a verified OpenRouter :free model.
+# x-ai/grok-4.6 is NOT on the seed team (OpenRouter 402 / no credits).
+# Advisors always tools=[]. Ping/402/quota skips that speaker; others continue.
 advisors:
   - id: advisor-sonnet
     model: claude-sonnet-5
     base_url: https://xixiapi.io/v1
     api_key_env: PRD_SFP_XIXI_KEY
     temperature: 0.5
-  - id: advisor-grok
-    model: x-ai/grok-4.6
+  - id: advisor-glm
+    model: z-ai/glm-5.2:free
     base_url: https://openrouter.ai/api/v1
     api_key_env: PRD_SFP_OPENROUTER_KEY
     temperature: 0.5
 
-# Optional Mac speakers — NOT on the seed team. Each supports BOTH:
-#   (1) transport: http + base_url + api_key_env  (OpenAI-compat)
-#   (2) transport: cli + command:  (local tool already on the Mac)
+# Advisor pool (not the default team). Both catalogs are first-class:
 #
-# Point primary or an advisor at one with `prd-ai-battle config set`:
+# 1) OpenRouter — official ids from /api/v1/models. Muse Spark 1.2 is
+#    meta/muse-spark-1.2 (paid, no :free slug). Verified :free examples:
+#    z-ai/glm-5.2:free, minimax/minimax-m3:free, nvidia/nemotron-3.5-lightning:free,
+#    inclusionai/ling-3.0-flash-fin:free, google/gemma-4-31b-it:free.
+#    Optional paid (not seed): meta/muse-spark-1.2, x-ai/grok-4.6.
+#
+# 2) OpenCode Zen Free — provider id `opencode` (sst/opencode), NOT OpenRouter.
+#    HTTP: https://opencode.ai/zen/v1 + PRD_OPENCODE_ZEN_KEY / OPENCODE_API_KEY.
+#    Mac picker → official model ids:
+#      MiMo V2.5 Free              mimo-v2.5-free
+#      Ling 3.0 Flash Fin Free     ling-3.0-flash-fin-free
+#      Nemotron 3.5 Lightning Free nemotron-3.5-lightning-free
+#      Nemotron 3 Ultra Free       nemotron-3-ultra-free
+#      Big Pickle                  big-pickle
+#    Zen Muse Spark 1.2 Contributor Free is muse-spark-1.2-contributor-free
+#    (Zen /responses — not an OpenRouter slug).
+#
+# Optional Mac CLI speakers — NOT on the seed team. Docker stays HTTP-only.
+# Point primary or an advisor with `prd-ai-battle config set`:
+#   --primary-transport cli --primary-command claude --primary-model claude-opus-5
 #   --primary-transport cli --primary-command codex --primary-model gpt-5-codex
-#   --advisor-id advisor-claude --add-advisor --transport cli --command claude
-#   --advisor-id advisor-agy --add-advisor --transport cli --command antigravity
-#   --primary-transport cli --primary-command grok --primary-model grok-4
+#   --add-advisor --advisor-id advisor-claude --transport cli --command claude
+#   --add-advisor --advisor-id advisor-codex --transport cli --command codex
+#   --add-advisor --advisor-id advisor-mimo --model mimo-v2.5-free \
+#       --base-url https://opencode.ai/zen/v1 --key-env PRD_OPENCODE_ZEN_KEY
+#   --add-advisor --advisor-id advisor-muse --model meta/muse-spark-1.2 \
+#       --base-url https://openrouter.ai/api/v1 --key-env PRD_SFP_OPENROUTER_KEY
+#   --advisor-id advisor-grok --add-advisor --model x-ai/grok-4.6 \
+#       --base-url https://openrouter.ai/api/v1 --key-env PRD_SFP_OPENROUTER_KEY
 #
 # Commands / binaries (missing = doctor/ping "missing", init still works):
 #   codex         Codex CLI (`codex exec`); or `opencode auth` / `codex login`
@@ -63,3 +89,4 @@ advisors:
 # HTTP alternatives (do not hardcode vendor hosts here — set base_url yourself):
 #   Codex / Claude Code / Gemini: your OpenAI-compat root + PRD_*_KEY
 #   Official xAI: base_url https://api.x.ai/v1 + PRD_XAI_KEY (not OpenRouter)
+#   OpenCode Zen: base_url https://opencode.ai/zen/v1 + PRD_OPENCODE_ZEN_KEY

@@ -54,8 +54,8 @@ def test_generated_opencode_overlay_follows_yaml_not_seed_opus(tmp_path: Path):
         primary_id="lead",
         primary_model="not-opus",
         primary_base_url="http://127.0.0.1:7777/v1",
-        advisor_id="advisor-grok",
-        advisor_model="not-grok",
+        advisor_id="advisor-glm",
+        advisor_model="not-glm",
         advisor_base_url="http://127.0.0.1:7778/v1",
     )
     assert keys == {}
@@ -63,7 +63,7 @@ def test_generated_opencode_overlay_follows_yaml_not_seed_opus(tmp_path: Path):
     assert overlay["default_agent"] == "lead"
     assert overlay["agent"]["lead"]["model"].endswith("not-opus")
     assert "claude-opus-5" not in overlay["agent"]["lead"]["model"]
-    assert overlay["agent"]["advisor-grok"]["model"].endswith("not-grok")
+    assert overlay["agent"]["advisor-glm"]["model"].endswith("not-glm")
     assert overlay["agent"]["lead"]["permission"]["task"] == "deny"
     assert overlay["agents"]["lead"]["permissions"] == [
         {"action": "subagent", "resource": "*", "effect": "deny"}
@@ -87,20 +87,20 @@ def test_generated_overlay_from_seed_keeps_backup_as_grok(tmp_path: Path):
     # Live seed agents stay on xixi / OpenRouter, not fake Claude-on-gateway aliases.
     assert overlay["agent"]["primary"]["model"].endswith("claude-opus-5")
     assert "prd-gateway" not in overlay["agent"]["primary"]["model"]
-    assert overlay["agent"]["advisor-grok"]["model"].endswith("x-ai/grok-4.6")
+    assert overlay["agent"]["advisor-glm"]["model"].endswith("z-ai/glm-5.2:free")
 
 
 def test_generated_overlay_lists_optional_mac_providers(tmp_path: Path):
     repo = _seed_repo(tmp_path)
     cfg = load_config(ensure_local_config(repo))
     overlay = generate_opencode_config(cfg)
-    for pid in ("prd-codex", "prd-claude-code", "prd-antigravity", "prd-gemini", "prd-xai", "prd-gateway"):
+    for pid in ("prd-codex", "prd-claude-code", "prd-antigravity", "prd-gemini", "prd-xai", "prd-gateway", "opencode", "prd-openrouter"):
         assert pid in overlay["provider"]
         assert pid in overlay["providers"]
     # Seed team unchanged.
     assert overlay["agent"]["primary"]["model"].endswith("claude-opus-5")
     assert overlay["agent"]["advisor-sonnet"]["model"].endswith("claude-sonnet-5")
-    assert overlay["agent"]["advisor-grok"]["model"].endswith("x-ai/grok-4.6")
+    assert overlay["agent"]["advisor-glm"]["model"].endswith("z-ai/glm-5.2:free")
     assert overlay["default_agent"] == "primary"
 
 

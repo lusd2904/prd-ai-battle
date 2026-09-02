@@ -12,7 +12,7 @@
 # Do not publish a wildcard HTTP port. Do not touch 金融台 containers.
 # Optional host-only 对照表: `prd-ai-battle web` → http://127.0.0.1:1780
 #
-# Linux container talks HTTP only (seed: xixi / OpenRouter).
+# Linux container talks HTTP only (seed: xixi / OpenRouter :free / optional Zen).
 # Mac CLI binaries (codex / claude / grok / agy) stay on the HOST unless
 # you bind-mount them yourself. Docker = HTTP speakers; CLI stays on Mac.
 #

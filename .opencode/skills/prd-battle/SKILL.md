@@ -20,9 +20,9 @@ Live ids come from gitignored `prd-ai-battle.yaml` (`primary` + `advisors[]`). S
 | --- | --- | --- |
 | `primary` | `claude-opus-5` via xixiapi.io | Only in `execute` / `revise` |
 | `advisor-sonnet` | `claude-sonnet-5` via xixiapi.io | Never (`tools=[]`, edit/shell deny) |
-| `advisor-grok` | `x-ai/grok-4.6` via OpenRouter | Never (`tools=[]`, edit/shell deny) |
+| `advisor-glm` | `z-ai/glm-5.2:free` via OpenRouter | Never (`tools=[]`, edit/shell deny) |
 
-Keys: `PRD_SFP_XIXI_KEY`, `PRD_SFP_OPENROUTER_KEY` (names in `prd-ai-battle.env.example`; values never in git). Optional `prd-gateway` backup: `http://127.0.0.1:8000/v1` + `PRD_AI_GATEWAY_KEY` — grok2api (`grok-4.5` / `grok-composer-2.5-fast`), **not Claude**.
+Keys: `PRD_SFP_XIXI_KEY`, `PRD_SFP_OPENROUTER_KEY` (names in `prd-ai-battle.env.example`; values never in git). Optional OpenCode Zen Free (`opencode` provider, `PRD_OPENCODE_ZEN_KEY`): `mimo-v2.5-free`, `big-pickle`, … — **not** OpenRouter slugs. Optional `prd-gateway` backup: `http://127.0.0.1:8000/v1` + `PRD_AI_GATEWAY_KEY` — grok2api (`grok-4.5` / `grok-composer-2.5-fast`), **not Claude**. `x-ai/grok-4.6` is optional, not seed (402 without credits).
 
 ## Commands
 

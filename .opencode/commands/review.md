@@ -16,7 +16,7 @@ Do this now:
 2. Present the shared `transcript` as one chat. Do **not** spawn OpenCode teammates, subagents, or sidecar panes.
 3. Do not hardcode advisor names — speakers are the current yaml `advisors[]`.
 4. Do not attach any other files. Advisors: tools=[], edit denied, shell denied.
-5. If one speaker times out or fails, the others already continued — do not abort review.
+5. If one speaker times out, 402s, hits quota, or fails ping, it was **skipped** — the others already continued. Do not abort review.
 6. Summarize their findings for the user. Next step is `/revise`.
 
 $ARGUMENTS

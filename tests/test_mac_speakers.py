@@ -31,8 +31,9 @@ def test_seed_yaml_still_loads_xixi_openrouter_team(monkeypatch):
     assert cfg.primary.model == "claude-opus-5"
     assert cfg.primary.transport == "http"
     assert cfg.advisors[0].id == "advisor-sonnet"
-    assert cfg.advisors[1].id == "advisor-grok"
-    assert cfg.advisors[1].model == "x-ai/grok-4.6"
+    assert cfg.advisors[1].id == "advisor-glm"
+    assert cfg.advisors[1].model == "z-ai/glm-5.2:free"
+    assert cfg.advisors[1].resolved_base_url(cfg.gateway) == "https://openrouter.ai/api/v1"
 
 
 def test_optional_overlay_catalog_has_all_mac_speakers():
@@ -124,4 +125,5 @@ def test_generated_overlay_from_seed_keeps_optional_catalog():
     cfg = load_config(Path("config.example.yaml"), offline=True)
     overlay = generate_opencode_config(cfg)
     assert set(OPTIONAL_PROVIDER_IDS) <= set(overlay["provider"])
+    assert "opencode" in overlay["provider"]
     assert overlay["agent"]["primary"]["model"].endswith("claude-opus-5")

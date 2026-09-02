@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import AsyncIterator
 from pathlib import Path
+
+log = logging.getLogger("prd_ai_battle")
 
 from prd_ai_battle.config import AppConfig
 from prd_ai_battle.diffs import chapter_diffs
@@ -84,6 +87,8 @@ class Session:
         self._stop_requested = False
         self._discuss_cancel: asyncio.Event | None = None
         self.last_write_path: Path | None = None
+        self._ping_transport = None
+        self.last_skipped: list[tuple[str, str]] = []
         if self.store.requirement_path.exists() and not self.requirement:
             self.requirement = self.store.requirement_path.read_text(encoding="utf-8")
 
@@ -303,6 +308,30 @@ class Session:
             out[model_id] = [] if model_id != self.state.primary else self.state.tools_for(model_id)
         return out
 
+    def _select_speakers(self, models):
+        """Drop speakers that fail ping / 402 / quota. Offline keeps everyone."""
+        self.last_skipped = []
+        if self.config.offline:
+            return list(models)
+        from prd_ai_battle.ping import filter_ready_speakers
+
+        ready, skipped = filter_ready_speakers(
+            list(models),
+            self.config,
+            transport=self._ping_transport,
+        )
+        self.last_skipped = [(m.id, reason) for m, reason in skipped]
+        return ready
+
+    def _emit_skips(self, phase: Phase) -> list[StreamDelta]:
+        events: list[StreamDelta] = []
+        for mid, reason in self.last_skipped:
+            notice = f"[skipped] {reason}"
+            log.warning("skip speaker %s: %s", mid, reason)
+            self._persist_assistant(mid, notice, phase)
+            events.append(StreamDelta(mid, notice, True))
+        return events
+
     async def discuss(
         self,
         user_prompt: str | None = None,
@@ -326,7 +355,11 @@ class Session:
             crossing = self.discuss_assistant_count() > 0
         prompt = user_prompt or (CROSSING_PROMPT if crossing else OPENING_PROMPT)
         self._persist_user(prompt, Phase.DISCUSS)
-        models = self.config.all_models()
+        models = self._select_speakers(self.config.all_models())
+        for event in self._emit_skips(Phase.DISCUSS):
+            yield event
+        if not models:
+            return
         messages_for = {m.id: self._discuss_messages(m.id, prompt) for m in models}
         tools_for = self._tools_map([m.id for m in models])
         async for event in self._run_models(
@@ -433,15 +466,19 @@ class Session:
             self.begin_review()
         elif self.state.phase is not Phase.REVIEW:
             raise IllegalTransition(f"Review is only valid after execute (in {self.state.phase.value})")
-        advisors = list(self.config.advisors)
-        messages_for = {m.id: self._review_messages(packet) for m in advisors}
-        tools_for = self._tools_map([m.id for m in advisors])
-        if any(tools_for[m.id] for m in advisors):
-            raise WriteDenied("Advisors must always receive tools: []")
         self._persist_user(
             f"Review {self.state.artifact_version} using brief + matrix + chapter_diff only.",
             Phase.REVIEW,
         )
+        advisors = self._select_speakers(list(self.config.advisors))
+        for event in self._emit_skips(Phase.REVIEW):
+            yield event
+        if not advisors:
+            return
+        messages_for = {m.id: self._review_messages(packet) for m in advisors}
+        tools_for = self._tools_map([m.id for m in advisors])
+        if any(tools_for[m.id] for m in advisors):
+            raise WriteDenied("Advisors must always receive tools: []")
         async for event in self._run_models(advisors, messages_for, tools_for, Phase.REVIEW):
             yield event
 

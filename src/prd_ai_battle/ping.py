@@ -5,6 +5,9 @@ CLI speakers are probed with `shutil.which` (no LLM call). Keys are never
 printed. Optional providers with an empty env are skipped. The optional
 grok2api backup treats 429 quota as reachable (credits empty), not a hard fail.
 
+Discuss/review skip a speaker on ping fail, HTTP 402 (payment), or quota
+(429) so one dead mouth does not hang the round. Remaining speakers continue.
+
 Tests must inject an httpx transport and may stub CLI `which` — this module
 does not require live network or installed Mac CLIs.
 """
@@ -23,6 +26,7 @@ from prd_ai_battle.config import (
     GATEWAY_KEY_ENV,
     GATEWAY_PROVIDER_ID,
     AppConfig,
+    ModelConfig,
     is_backup_gateway_url,
 )
 from prd_ai_battle.http_retry import backoff_seconds, should_retry_status
@@ -39,6 +43,20 @@ PING_TIMEOUT_S = 20.0
 PING_USER_MESSAGE = "ping"
 PING_RETRY_ATTEMPTS = 3
 PING_BACKOFF_S = (0.05, 0.1)
+
+# Discuss/review skip these HTTP statuses instead of retrying/hanging.
+SKIP_HTTP_STATUSES = frozenset({402, 429})
+SKIP_OUTCOMES = frozenset(
+    {
+        "http_error",
+        "missing_key",
+        "unreachable",
+        "missing_cli",
+        "reachable_quota_empty",
+        "payment_required",
+        "quota",
+    }
+)
 
 
 @dataclass
@@ -273,6 +291,9 @@ def ping_one(
         if last_status == 429:
             result.outcome = "reachable_quota_empty"
             result.hard_fail = False
+        elif last_status == 402:
+            result.outcome = "payment_required"
+            result.hard_fail = False
         elif last_status is not None and 200 <= last_status < 300:
             result.outcome = "ok"
             result.hard_fail = False
@@ -338,7 +359,92 @@ def ping_config(
         "max_tokens": PING_MAX_TOKENS,
         "note": (
             "429 on the optional grok2api backup is reachable, quota empty — not a hard fail. "
+            "HTTP 402 (payment/credits) is payment_required — discuss/review skip that speaker. "
             "Optional HTTP with empty env is skipped. Missing Mac CLI is reported, not a crash. "
             "Keys are redacted."
         ),
     }
+
+
+def speaker_ping_target(model: ModelConfig, cfg: AppConfig) -> PingTarget:
+    """One ping target per yaml speaker (no URL de-dupe — models can 402 independently)."""
+    from prd_ai_battle.mac_speakers import infer_cli_command
+    from prd_ai_battle.overlay import provider_id_for
+
+    gateway_url = cfg.gateway.resolved_base_url()
+    pid = provider_id_for(model, gateway_url)
+    if model.is_cli():
+        command = infer_cli_command(model.model, model.command)
+        return PingTarget(
+            id=model.id,
+            model=model.model,
+            base_url="",
+            api_key=model.resolved_key(cfg.gateway),
+            api_key_env=model.api_key_env or "",
+            backup=False,
+            kind="cli",
+            optional=True,
+            command=command,
+            provider_id=pid,
+        )
+    url = model.resolved_base_url(cfg.gateway)
+    return PingTarget(
+        id=model.id,
+        model=model.model,
+        base_url=url,
+        api_key=model.resolved_key(cfg.gateway),
+        api_key_env=model.api_key_env or "",
+        backup=is_backup_gateway_url(url, gateway_url),
+        kind="http",
+        optional=False,
+        provider_id=pid,
+    )
+
+
+def skip_reason(result: PingResult) -> str | None:
+    """Human-readable skip reason, or None when the speaker is usable."""
+    if result.outcome in {"ok", "cli_present"}:
+        return None
+    if result.http_status == 402 or result.outcome == "payment_required":
+        return f"HTTP 402 payment/quota ({result.detail or 'no credits'})"
+    if result.http_status == 429 or result.outcome == "reachable_quota_empty":
+        return f"quota empty (HTTP {result.http_status or 429})"
+    if result.outcome == "missing_key":
+        return f"missing key ({result.api_key_env or 'api_key'})"
+    if result.outcome == "missing_cli":
+        return f"missing CLI ({result.command or result.detail})"
+    if result.outcome == "unreachable":
+        return f"ping unreachable ({result.detail})"
+    if result.outcome == "http_error":
+        return f"ping HTTP {result.http_status}: {result.detail}"
+    if result.outcome == "skipped_optional":
+        return result.detail or "optional env empty"
+    if result.outcome in SKIP_OUTCOMES:
+        return result.detail or result.outcome
+    return None
+
+
+def filter_ready_speakers(
+    models: list[ModelConfig],
+    cfg: AppConfig,
+    *,
+    transport: httpx.BaseTransport | None = None,
+    timeout: float = 8.0,
+    which: WhichFn | None = None,
+) -> tuple[list[ModelConfig], list[tuple[ModelConfig, str]]]:
+    """Ping each yaml speaker. Return (ready, [(skipped, reason), ...]).
+
+    402 / quota / ping fail skip that mouth. Others continue. Offline callers
+    should not invoke this — they already treat every speaker as ready.
+    """
+    ready: list[ModelConfig] = []
+    skipped: list[tuple[ModelConfig, str]] = []
+    for model in models:
+        target = speaker_ping_target(model, cfg)
+        result = ping_one(target, transport=transport, timeout=timeout, which=which)
+        reason = skip_reason(result)
+        if reason:
+            skipped.append((model, reason))
+        else:
+            ready.append(model)
+    return ready, skipped
