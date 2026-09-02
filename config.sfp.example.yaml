@@ -1,0 +1,58 @@
+# Finance-platform (SFP) models for the Mac-local TUI.
+# Copy to a private yaml (e.g. prd-ai-battle.yaml) and pass --config.
+# Keys stay in environment variables — never commit API keys, tokens, or decrypted secrets.
+#
+# Mac-local only. Do not deploy this TUI on the shared cloud hub.
+#
+# Probe 2026-09-02 from the hub: include only endpoints that returned live
+# OpenAI-compatible chat.completion JSON, or a live 429 (quota empty).
+# Default product config remains config.example.yaml (loopback gateway :4000).
+
+workspace: .prd-ai-battle
+offline: false
+
+# Shared OpenAI-compat root for xixi models. Primary + sonnet inherit unless overridden.
+gateway:
+  base_url: https://xixiapi.io/v1
+  api_key: ${PRD_SFP_XIXI_KEY:-}
+
+primary:
+  id: primary
+  model: claude-opus-5
+  base_url: https://xixiapi.io/v1
+  api_key_env: PRD_SFP_XIXI_KEY
+  temperature: 0.3
+
+advisors:
+  - id: advisor-sonnet
+    model: claude-sonnet-5
+    base_url: https://xixiapi.io/v1
+    api_key_env: PRD_SFP_XIXI_KEY
+    temperature: 0.5
+  - id: advisor-grok-openrouter
+    model: x-ai/grok-4.6
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: PRD_SFP_OPENROUTER_KEY
+    temperature: 0.5
+  # Optional: grok-4.5. Public https://grok.luapi.top/v1 was reachable 2026-09-02
+  # (HTTP 429 upstream_quota_exhausted). Default is local grok2api; point a private
+  # yaml at the public host if you have quota. Keys via PRD_AI_GATEWAY_KEY.
+  - id: advisor-grok-45
+    model: grok-4.5
+    base_url: ${PRD_AI_GATEWAY_URL:-http://127.0.0.1:8000/v1}
+    api_key_env: PRD_AI_GATEWAY_KEY
+    temperature: 0.5
+  # Optional: same grok2api / public grok host as grok-4.5 (429 on probe).
+  - id: advisor-grok-composer
+    model: grok-composer-2.5-fast
+    base_url: ${PRD_AI_GATEWAY_URL:-http://127.0.0.1:8000/v1}
+    api_key_env: PRD_AI_GATEWAY_KEY
+    temperature: 0.5
+
+# Skipped on 2026-09-02 (do not enable):
+#   claude-fable-5 @ xixiapi.io — 502
+#   z-ai/glm-5.2 @ NVIDIA integrate.api.nvidia.com — 410 EOL
+#   deepseek-ai/deepseek-v4-flash-0731 @ NVIDIA — timeout
+#   nvidia/nemotron-3-ultra-550b-a55b @ build.nvidia.com — HTML page, not an API
+#   gpt-5.6-sol @ xixiapi.io — timeout
+#   grok-4.6 @ xixiapi.io — 503

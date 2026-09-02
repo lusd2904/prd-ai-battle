@@ -97,6 +97,21 @@ primary:
 
 Per-model `base_url` / `api_key` / `api_key_env` override the shared gateway. An optional external tunnel is configured the same way — only in **your** yaml or env, never in this repository.
 
+### Finance-platform (SFP) models — Mac-local only
+
+`config.sfp.example.yaml` points primary/advisors at the SFP OpenAI-compatible endpoints that answered a live `chat/completions` ping (2026-09-02). Copy it locally; do not commit the copy if it ever contains secrets:
+
+```bash
+cp config.sfp.example.yaml prd-ai-battle.yaml
+export PRD_SFP_XIXI_KEY=...          # primary claude-opus-5 + advisor claude-sonnet-5
+export PRD_SFP_OPENROUTER_KEY=...    # advisor x-ai/grok-4.6
+export PRD_AI_GATEWAY_KEY=...        # optional grok-4.5 / grok-composer via local grok2api
+prd-ai-battle --config prd-ai-battle.yaml
+prd-ai-battle doctor --config prd-ai-battle.yaml
+```
+
+SFP keys stay in env vars (`PRD_SFP_XIXI_KEY`, `PRD_SFP_OPENROUTER_KEY`, `PRD_AI_GATEWAY_KEY`). Never put API keys, tokens, or decrypted secrets in git. This TUI is **Mac-local only** — do not deploy it on the shared cloud hub.
+
 Discussion opens **one SSE stream per model**. Advisor requests always send `"tools": []`.
 
 Zero-config (`prd-ai-battle` with no file) boots **offline mocks**.
@@ -130,6 +145,8 @@ prd-ai-battle screenshot -o tui.svg
 ## Project map
 
 ```
+config.example.yaml        # loopback multi-key gateway (default)
+config.sfp.example.yaml    # Mac-local SFP models; keys via env only
 src/prd_ai_battle/
   models.py        # Phase, SessionState, matrix columns, ReviewPacket
   state.py         # discuss → locked → execute → review → revise

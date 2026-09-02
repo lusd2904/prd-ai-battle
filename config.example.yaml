@@ -4,6 +4,8 @@
 # base_url and api_key come from this file and/or env vars.
 # The checked-in default is the loopback gateway — never a vendor host.
 # An optional external tunnel belongs only in YOUR yaml/env, not in this repo.
+# Finance-platform (SFP) Mac-local models: copy config.sfp.example.yaml instead
+# (keys via env only; never commit secrets; do not run on the shared cloud hub).
 
 workspace: .prd-ai-battle
 offline: false   # true = mock models, no network

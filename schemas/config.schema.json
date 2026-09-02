@@ -28,15 +28,15 @@
     "gateway": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Shared local multi-key gateway. Models inherit base_url and api_key unless they override.",
+      "description": "Shared OpenAI-compatible gateway. Models inherit base_url and api_key unless they override. Checked-in default is the loopback gateway; operator configs (including config.sfp.example.yaml) may set per-model roots. Never commit API keys.",
       "properties": {
         "base_url": {
           "type": "string",
-          "description": "OpenAI-compatible Chat Completions root. Default is the loopback gateway via PRD_AI_GATEWAY_URL. Do not hardcode vendor or tunnel hosts in the repo."
+          "description": "OpenAI-compatible Chat Completions root. Default example uses the loopback gateway via PRD_AI_GATEWAY_URL. Per-model base_url overrides the gateway. Do not commit API keys."
         },
         "api_key": {
           "type": "string",
-          "description": "Gateway key, usually ${PRD_AI_GATEWAY_KEY:-}. Prefer env interpolation over plaintext."
+          "description": "Gateway key, usually ${PRD_AI_GATEWAY_KEY:-} or another ${ENV} interpolation. Prefer env interpolation over plaintext. Never commit secrets."
         }
       }
     },
@@ -59,7 +59,7 @@
         },
         "api_key_env": {
           "type": "string",
-          "description": "Optional environment variable name to read the key from (alternative to api_key)."
+          "description": "Optional environment variable name to read the key from (alternative to api_key). Never put the secret value in yaml."
         },
         "model": {
           "type": "string",
